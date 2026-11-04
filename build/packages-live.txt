@@ -12,3 +12,4 @@ cryptsetup-bin
 fonts-ibm-plex   # multiverse (OFL): IBM Plex Sans and Mono for the installer
 polkitd          # KPMcore runs its partitioning helper through DBus + polkit; without it the partition page never finishes scanning
 qml6-module-qtquick-layouts   # the title-bar sidebar QML
+libqt6svg6       # the Q mark (SVG) in the QML title bar
