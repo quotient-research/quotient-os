@@ -102,10 +102,11 @@ scenario() {
   start_with_console "$vm" "$LOGS/$id-boot-console.log"
   log "Booting the installed disk"
   IP=""
-  if ! wait_for 300 "DHCP lease for $NAME" sh -c "ip=\$(lxc network list-leases lxdbr0 --format csv | awk -F, -v n=$NAME '\$1==n{print \$3}' | head -1); [ -n \"\$ip\" ]"; then
+  # LXD records the lease under the instance name and shows it in `lxc list`.
+  if ! wait_for 300 "DHCP lease for $vm" sh -c "lxc list $vm --format csv -c 4 | grep -qE '([0-9]+\.){3}[0-9]+'"; then
     fail "$id no DHCP lease"; return
   fi
-  IP=$(lxc network list-leases lxdbr0 --format csv | awk -F, -v n="$NAME" '$1==n{print $3}' | head -1)
+  IP=$(lxc list "$vm" --format csv -c 4 | grep -oE '([0-9]+\.){3}[0-9]+' | head -1)
   log "VM address $IP"
   wait_for 300 "SSH" ssh_vm true || { fail "$id no SSH"; return; }
 

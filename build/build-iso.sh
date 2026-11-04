@@ -194,6 +194,16 @@ if [ "$SEED" = 1 ]; then
     snap download snapd --basename=snapd >/dev/null
     echo "$BASE" > base.name )
   BASE=$(cat "$SNAP_DL/base.name")
+  # snapd refuses a seed without a model. Classic images use the generic
+  # "generic-classic" model; ship it with its signing key and account.
+  ( cd "$SNAP_DL"
+    snap known --remote model series=16 brand-id=generic model=generic-classic > model.assert
+    KEYID=$(awk '/^sign-key-sha3-384:/{print $2}' model.assert)
+    snap known --remote account-key public-key-sha3-384="$KEYID" > key.assert
+    snap known --remote account account-id=generic > account.assert
+    [ -s model.assert ] && [ -s key.assert ] && [ -s account.assert ] || { echo "could not fetch the generic-classic model assertions" >&2; exit 1; }
+    cat account.assert key.assert model.assert > model )
+  cp "$SNAP_DL/model" "$SEED_DIR/assertions/model"
   for s in snapd "$BASE" microk8s; do
     rev=$(grep -E '^snap-revision:' "$SNAP_DL/$s.assert" | head -1 | awk '{print $2}')
     cp "$SNAP_DL/$s.snap" "$SEED_DIR/snaps/${s}_${rev}.snap"
