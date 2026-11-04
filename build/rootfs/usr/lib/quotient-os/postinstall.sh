@@ -19,6 +19,11 @@ desktop_shortcut=off
 EOF
 fi
 
+# 1b. The seeded MicroK8s exists for Quotient. Without this marker the package
+#     treats it as the owner's own cluster and refuses to touch it (harness N).
+mkdir -p /var/lib/quotient/installed
+[ -s /var/lib/quotient/installed/microk8s ] || date -Iseconds > /var/lib/quotient/installed/microk8s
+
 # 2. Firewall on, before the package runs, so firewall=auto adds Quotient's ports.
 if command -v ufw >/dev/null; then
   ufw --force reset >/dev/null 2>&1 || true
