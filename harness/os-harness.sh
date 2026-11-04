@@ -187,10 +187,22 @@ qemu_gui() { # qemu_gui BOOT_ORDER
      -drive file="$LOGS/O2-disk.qcow2",if=virtio,format=qcow2 \
      -cdrom "$ISO" -boot "$1" -device virtio-vga -vnc 127.0.0.1:5 -display none \
      -netdev user,id=n0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=n0 \
-     -serial "file:$LOGS/O2-serial.log" -pidfile "$LOGS/O2-qemu.pid" >"$LOGS/O2-qemu.log" 2>&1 &)
+     -serial "unix:$LOGS/O2-serial.sock,server,nowait" -pidfile "$LOGS/O2-qemu.pid" >"$LOGS/O2-qemu.log" 2>&1 &)
   sleep 5
+  # A two-way bridge to the live system's serial root login: output streams
+  # into O2-serial.log, commands go in through serial_cmd (for log retrieval).
+  (setsid nohup socat "PTY,link=$LOGS/O2-serial.pty,raw,echo=0" "UNIX-CONNECT:$LOGS/O2-serial.sock" >/dev/null 2>&1 </dev/null &)
+  sleep 2
+  (setsid nohup sh -c "cat '$LOGS/O2-serial.pty' >> '$LOGS/O2-serial.log'" >/dev/null 2>&1 </dev/null &)
 }
-qemu_stop() { [ -f "$LOGS/O2-qemu.pid" ] && kill "$(cat "$LOGS/O2-qemu.pid")" 2>/dev/null || true; sleep 3; }
+serial_cmd() { printf '\r\n%s\r\n' "$1" > "$LOGS/O2-serial.pty" 2>/dev/null || true; }
+# On a failed GUI install, pull the interesting lines of Calamares's own log.
+dump_calamares_log() {
+  serial_cmd "grep -vE 'reportProgress|Remaining modules' /root/.cache/calamares/session.log | grep -iE 'ERROR|WARNING|grub|bootloader|Failed|failed|exit code' | tail -40 | cut -c1-240; echo CALAMARES-LOG-END"
+  sleep 8
+  sed -n '/CALAMARES-LOG-END/q;p' "$LOGS/O2-serial.log" | grep -aE 'ERROR|WARNING|grub|bootloader|Failed|failed|exit code' | tail -40 > "$LOGS/O2-calamares-errors.log" || true
+}
+qemu_stop() { [ -f "$LOGS/O2-qemu.pid" ] && kill "$(cat "$LOGS/O2-qemu.pid")" 2>/dev/null || true; pkill -f "PTY,link=$LOGS/O2-serial.pty" 2>/dev/null || true; sleep 3; }
 
 scenario_gui() {
   local id=O2
@@ -234,7 +246,7 @@ scenario_gui() {
   vnc_key alt-d
   # Reboot into the disk (once=d is spent): QEMU restarts from the disk on its own.
   SSH_TARGET="$USER_@127.0.0.1"; SSH_PORT=2222; SSH_AUTH=(sshpass -p "$PASS")
-  wait_for 600 "SSH on the installed disk" ssh_vm true || { fail "O2 no SSH after the GUI install"; shot 9-after; [ "$KEEP" = 1 ] || qemu_stop; return; }
+  wait_for 600 "SSH on the installed disk" ssh_vm true || { fail "O2 no SSH after the GUI install"; shot 9-after; dump_calamares_log; [ "$KEEP" = 1 ] || qemu_stop; return; }
   checks O2 false
   [ "$KEEP" = 1 ] || qemu_stop
 }
