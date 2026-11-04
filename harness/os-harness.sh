@@ -217,14 +217,21 @@ scenario_gui() {
   log "Installing through the GUI"
   # Finished page: "Restart now" is checked; Done reboots. Wait for the serial
   # log to show the shutdown, up to 20 minutes, taking a screenshot every minute.
-  local i=0
+  # The progress page changes every minute (bar, slideshow); the finished and
+  # the failed pages do not. Two identical screenshots in a row means it's done.
+  local i=0 same=0
   while [ $i -lt 20 ]; do
     sleep 60; i=$((i+1)); shot "8-installing-$i"
-    if grep -aq "reboot: Restarting\|Finished QuotientOS\|systemd-shutdown" "$LOGS/O2-serial.log" 2>/dev/null; then break; fi
-    # The finished page: press Done (Alt+D) in case restartNow is a button, harmless otherwise.
-    vnc_key alt-d
+    if [ $i -gt 1 ] && cmp -s "$LOGS/O2-8-installing-$i.jpg" "$LOGS/O2-8-installing-$((i-1)).jpg"; then
+      same=$((same+1)); [ $same -ge 1 ] && break
+    else
+      same=0
+    fi
+    grep -aq "reboot: Restarting\|systemd-shutdown" "$LOGS/O2-serial.log" 2>/dev/null && break
   done
   shot 9-finished
+  # Finished page: "Restart now" is checked, Done (Alt+D) reboots into the disk.
+  vnc_key alt-d
   # Reboot into the disk (once=d is spent): QEMU restarts from the disk on its own.
   SSH_TARGET="$USER_@127.0.0.1"; SSH_PORT=2222; SSH_AUTH=(sshpass -p "$PASS")
   wait_for 600 "SSH on the installed disk" ssh_vm true || { fail "O2 no SSH after the GUI install"; shot 9-after; [ "$KEEP" = 1 ] || qemu_stop; return; }
