@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# QuotientOS install harness. Boots an ISO in a throwaway LXD VM, installs
-# unattended, reboots into the disk and checks that the Mainframe comes up.
-# Runs on the LXD host (ep-ai). Mirrors quotient-server's install harness.
+# QuotientOS install harness. Boots an ISO in a throwaway VM, installs, reboots
+# into the disk and checks that the Mainframe comes up. Runs on ep-ai.
 #
-#   ./os-harness.sh run --iso FILE [--scenarios O1,O3] [--keep] [--logs DIR]
+#   ./os-harness.sh run --iso FILE [--scenarios O1,O2,O3] [--keep] [--logs DIR]
 #   ./os-harness.sh clean
 #
 # Scenarios
-#   O1  unattended install, Secure Boot off, reboot, healthy
+#   O1  unattended install in an LXD VM, Secure Boot off, reboot, healthy
 #   O3  the same with Secure Boot on
+#   O2  the graphical installer driven by keyboard over VNC in host QEMU
+#       (LXD's QEMU has no VNC); a screenshot of every page, then the same
+#       checks on the installed disk
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 CMD=${1:-}; shift || true
@@ -34,6 +36,7 @@ FAILED=0
 
 if [ "$CMD" = clean ]; then
   for v in $(lxc list --format csv -c n | grep '^qos-' || true); do lxc delete -f "$v"; done
+  pkill -f "qemu-system-x86_64 -name qos-o2" || true
   exit 0
 fi
 [ "$CMD" = run ] || { sed -n 2,14p "$0"; exit 2; }
@@ -53,7 +56,7 @@ fi
 
 NAME=lakehouse; USER_=owner; PASS=$(openssl rand -hex 8)
 SSHKEY=$LOGS/id_ed25519; ssh-keygen -q -t ed25519 -N '' -f "$SSHKEY" </dev/null
-SSH_OPTS=(-i "$SSHKEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR)
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR)
 
 # Remaster the ISO with the answers on the medium (GRUB picks the unattended entry).
 ANS=$LOGS/answers.conf
@@ -68,15 +71,15 @@ poweroff=1
 serial=1
 EOF
 HISO=$LOGS/harness.iso
-log "Remastering $ISO with answers → $HISO"
-sudo "$HERE/../build/build-iso.sh" --remaster --answers "$ANS" --iso-out "$HISO" >"$LOGS/remaster.log" 2>&1 || { cat "$LOGS/remaster.log"; exit 1; }
+if echo "$SCENARIOS" | grep -qE 'O1|O3'; then
+  log "Remastering $ISO with answers → $HISO"
+  sudo "$HERE/../build/build-iso.sh" --remaster --answers "$ANS" --iso-out "$HISO" >"$LOGS/remaster.log" 2>&1 || { cat "$LOGS/remaster.log"; exit 1; }
+fi
 
-vm_ip() {
-  lxc list "$1" --format csv -c 4 2>/dev/null | grep -oE '([0-9]+\.){3}[0-9]+' | head -1 ||
-  lxc network list-leases lxdbr0 --format csv 2>/dev/null | awk -F, -v n="$NAME" 'tolower($1)==n {print $3; exit}'
-}
-ssh_vm() { ssh "${SSH_OPTS[@]}" "$USER_@$IP" "$@"; }
-sudo_vm() { ssh "${SSH_OPTS[@]}" "$USER_@$IP" "echo '$PASS' | sudo -S -p '' $*"; }
+# How to reach the installed system: set per scenario.
+SSH_TARGET=""; SSH_PORT=22; SSH_AUTH=()
+ssh_vm() { "${SSH_AUTH[@]}" ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_TARGET" "$@"; }
+sudo_vm() { "${SSH_AUTH[@]}" ssh "${SSH_OPTS[@]}" -p "$SSH_PORT" "$SSH_TARGET" "echo '$PASS' | sudo -S -p '' $*"; }
 wait_for() { # wait_for SECONDS DESCRIPTION CMD...
   local t=$1 d=$2; shift 2
   local start; start=$(date +%s)
@@ -87,37 +90,9 @@ wait_for() { # wait_for SECONDS DESCRIPTION CMD...
   log "$d after $(( $(date +%s) - start ))s"
 }
 
-scenario() {
-  local id=$1 sb=$2 vm
-  vm=qos-$(echo "$id" | tr 'A-Z' 'a-z')
-  log "=== $id (secureboot=$sb) on $vm"
-  lxc delete -f "$vm" >/dev/null 2>&1 || true
-  lxc init "$vm" --empty --vm -c limits.cpu=3 -c limits.memory=4GiB -c "security.secureboot=$sb" -d root,size=30GiB >/dev/null
-  lxc config device add "$vm" iso disk source="$HISO" boot.priority=10 >/dev/null
-  # Start with the serial console captured to a log (a VM's console is only
-  # readable live), detached so the harness can keep polling.
-  start_with_console() { # start_with_console VM LOGFILE
-    (setsid nohup script -q -c "lxc start $1 --console" "$2" >/dev/null 2>&1 </dev/null &)
-    sleep 3
-  }
-  start_with_console "$vm" "$LOGS/$id-install-console.log"
-  log "Installing from the ISO (unattended)"
-  sleep 60   # the VM must be seen RUNNING before STOPPED means "finished"
-  if ! wait_for 1500 "install finished (VM powered off)" sh -c "lxc info $vm | grep -q 'Status: STOPPED'"; then
-    fail "$id install did not finish"; return
-  fi
-  lxc config device remove "$vm" iso >/dev/null
-  start_with_console "$vm" "$LOGS/$id-boot-console.log"
-  log "Booting the installed disk"
-  IP=""
-  # LXD records the lease under the instance name and shows it in `lxc list`.
-  if ! wait_for 300 "DHCP lease for $vm" sh -c "lxc list $vm --format csv -c 4 | grep -qE '([0-9]+\.){3}[0-9]+'"; then
-    fail "$id no DHCP lease"; return
-  fi
-  IP=$(lxc list "$vm" --format csv -c 4 | grep -oE '([0-9]+\.){3}[0-9]+' | head -1)
-  log "VM address $IP"
-  wait_for 300 "SSH" ssh_vm true || { fail "$id no SSH"; return; }
-
+# The checks every scenario runs once the installed disk is up and reachable.
+checks() { # checks ID SECUREBOOT(true|false)
+  local id=$1 sb=$2
   [ "$(ssh_vm hostname)" = "$NAME" ] && pass "$id hostname $NAME" || fail "$id hostname is $(ssh_vm hostname)"
   if [ "$sb" = true ]; then
     sudo_vm "od -An -t u1 /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c" | grep -q ' 1$' \
@@ -145,6 +120,7 @@ scenario() {
   ssh_vm 'systemctl is-active NetworkManager avahi-daemon ssh' | grep -vq active && fail "$id a base service is down" || pass "$id NetworkManager, Avahi, SSH active"
   ssh_vm 'test -f /etc/quotient/install.conf && grep -q "^http_port=80" /etc/quotient/install.conf' && pass "$id install.conf preseeded" || fail "$id install.conf missing"
   ssh_vm 'test ! -e /usr/bin/calamares && test ! -e /usr/lib/quotient-os/quotient-os-install.sh' && pass "$id no live-layer files on disk" || fail "$id live files leaked into the install"
+  ssh_vm 'test ! -d /usr/lib/firmware/qcom && test ! -d /usr/lib/firmware/nvidia' && pass "$id trimmed firmware absent" || fail "$id trimmed firmware present"
 
   log "Reboot"
   sudo_vm "systemctl reboot" >/dev/null 2>&1 || true
@@ -155,13 +131,112 @@ scenario() {
   sudo_vm "journalctl -u quotient-configure --no-pager" > "$LOGS/$id-configure.journal" 2>&1 || true
   sudo_vm "journalctl -b -1 --no-pager" > "$LOGS/$id-firstboot.journal" 2>&1 || true
   sudo_vm "quotient status" > "$LOGS/$id-status.txt" 2>&1 || true
+}
+
+# Start an LXD VM with the serial console captured to a log (a VM's console is
+# only readable live), detached so the harness can keep polling.
+start_with_console() { # start_with_console VM LOGFILE
+  (setsid nohup script -q -c "lxc start $1 --console" "$2" >/dev/null 2>&1 </dev/null &)
+  sleep 3
+}
+
+scenario() { # scenario ID SECUREBOOT: unattended install in an LXD VM
+  local id=$1 sb=$2 vm
+  vm=qos-$(echo "$id" | tr 'A-Z' 'a-z')
+  log "=== $id (secureboot=$sb) on $vm"
+  lxc delete -f "$vm" >/dev/null 2>&1 || true
+  lxc init "$vm" --empty --vm -c limits.cpu=3 -c limits.memory=4GiB -c "security.secureboot=$sb" -d root,size=30GiB >/dev/null </dev/null
+  lxc config device add "$vm" iso disk source="$HISO" boot.priority=10 >/dev/null </dev/null
+  start_with_console "$vm" "$LOGS/$id-install-console.log"
+  log "Installing from the ISO (unattended)"
+  sleep 60   # the VM must be seen RUNNING before STOPPED means "finished"
+  if ! wait_for 1500 "install finished (VM powered off)" sh -c "lxc info $vm | grep -q 'Status: STOPPED'"; then
+    fail "$id install did not finish"; return
+  fi
+  lxc config device remove "$vm" iso >/dev/null </dev/null
+  start_with_console "$vm" "$LOGS/$id-boot-console.log"
+  log "Booting the installed disk"
+  # LXD records the lease under the instance name and shows it in `lxc list`.
+  if ! wait_for 300 "DHCP lease for $vm" sh -c "lxc list $vm --format csv -c 4 | grep -qE '([0-9]+\.){3}[0-9]+'"; then
+    fail "$id no DHCP lease"; return
+  fi
+  local ip; ip=$(lxc list "$vm" --format csv -c 4 | grep -oE '([0-9]+\.){3}[0-9]+' | head -1)
+  log "VM address $ip"
+  SSH_TARGET="$USER_@$ip"; SSH_PORT=22; SSH_AUTH=()
+  SSH_OPTS+=(-i "$SSHKEY")
+  wait_for 300 "SSH" ssh_vm true || { fail "$id no SSH"; return; }
+  checks "$id" "$sb"
   [ "$KEEP" = 1 ] || lxc delete -f "$vm"
+}
+
+# --- O2: the graphical installer -------------------------------------------
+# Host QEMU with KVM, OVMF, virtio-vga, a VNC display on 127.0.0.1:5 and user
+# networking with SSH forwarded to 127.0.0.1:2222. Keys go in with vncdo and
+# screenshots come out with vncsnapshot. Calamares buttons have mnemonics
+# (Alt+N next, Alt+B back); page contents are typed after a click into the
+# first field.
+VNC=127.0.0.1::5905
+vnc_key() { "$HOME/.local/bin/vncdo" -s "$VNC" key "$1" >/dev/null 2>&1; sleep 1; }
+vnc_type() { "$HOME/.local/bin/vncdo" -s "$VNC" type "$1" >/dev/null 2>&1; sleep 1; }
+vnc_click() { "$HOME/.local/bin/vncdo" -s "$VNC" move "$1" "$2" click 1 >/dev/null 2>&1; sleep 1; }
+shot() { vncsnapshot -quiet 127.0.0.1:5 "$LOGS/O2-$1.jpg" >/dev/null 2>&1 || true; }
+qemu_gui() { # qemu_gui BOOT_ORDER
+  (setsid nohup qemu-system-x86_64 -name qos-o2 -enable-kvm -m 4096 -smp 3 -cpu host -machine q35 \
+     -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+     -drive if=pflash,format=raw,file="$LOGS/O2-vars.fd" \
+     -drive file="$LOGS/O2-disk.qcow2",if=virtio,format=qcow2 \
+     -cdrom "$ISO" -boot "$1" -device virtio-vga -vnc 127.0.0.1:5 -display none \
+     -netdev user,id=n0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=n0 \
+     -serial "file:$LOGS/O2-serial.log" -pidfile "$LOGS/O2-qemu.pid" >"$LOGS/O2-qemu.log" 2>&1 &)
+  sleep 5
+}
+qemu_stop() { [ -f "$LOGS/O2-qemu.pid" ] && kill "$(cat "$LOGS/O2-qemu.pid")" 2>/dev/null || true; sleep 3; }
+
+scenario_gui() {
+  local id=O2
+  log "=== O2 (graphical installer in host QEMU, VNC on :5)"
+  for t in qemu-system-x86_64 vncsnapshot "$HOME/.local/bin/vncdo" sshpass; do
+    command -v "$t" >/dev/null || { fail "O2 needs $t on this host"; return; }
+  done
+  pkill -f "qemu-system-x86_64 -name qos-o2" 2>/dev/null || true
+  rm -f "$LOGS/O2-disk.qcow2"; qemu-img create -q -f qcow2 "$LOGS/O2-disk.qcow2" 30G
+  cp /usr/share/OVMF/OVMF_VARS_4M.fd "$LOGS/O2-vars.fd"
+  qemu_gui "order=c,once=d"
+  log "Waiting for the welcome page"
+  sleep 100; shot 1-welcome
+  vnc_key alt-n; sleep 4; shot 2-locale
+  vnc_key alt-n; sleep 4; shot 3-keyboard
+  vnc_key alt-n; sleep 8; shot 4-disk           # erase + first disk preselected
+  vnc_key alt-n; sleep 4; shot 5-users-empty
+  # Users page: full name → login (auto) → hostname (auto) → password → repeat.
+  vnc_click 640 120; vnc_type "Owner"; vnc_key tab; vnc_type "$USER_"; vnc_key tab; vnc_type "$NAME"
+  vnc_key tab; vnc_type "$PASS"; vnc_key tab; vnc_type "$PASS"; sleep 2; shot 5-users
+  vnc_key alt-n; sleep 4; shot 6-summary
+  vnc_key alt-n; sleep 3; shot 7-confirm        # prompt-install dialog
+  vnc_key alt-i; sleep 1; vnc_key enter; sleep 15; shot 8-installing
+  log "Installing through the GUI"
+  # Finished page: "Restart now" is checked; Done reboots. Wait for the serial
+  # log to show the shutdown, up to 20 minutes, taking a screenshot every minute.
+  local i=0
+  while [ $i -lt 20 ]; do
+    sleep 60; i=$((i+1)); shot "8-installing-$i"
+    if grep -aq "reboot: Restarting\|Finished QuotientOS\|systemd-shutdown" "$LOGS/O2-serial.log" 2>/dev/null; then break; fi
+    # The finished page: press Done (Alt+D) in case restartNow is a button, harmless otherwise.
+    vnc_key alt-d
+  done
+  shot 9-finished
+  # Reboot into the disk (once=d is spent): QEMU restarts from the disk on its own.
+  SSH_TARGET="$USER_@127.0.0.1"; SSH_PORT=2222; SSH_AUTH=(sshpass -p "$PASS")
+  wait_for 600 "SSH on the installed disk" ssh_vm true || { fail "O2 no SSH after the GUI install"; shot 9-after; [ "$KEEP" = 1 ] || qemu_stop; return; }
+  checks O2 false
+  [ "$KEEP" = 1 ] || qemu_stop
 }
 
 for s in $(echo "$SCENARIOS" | tr ',' ' '); do
   case "$s" in
     O1) scenario O1 false ;;
     O3) scenario O3 true ;;
+    O2) scenario_gui ;;
     *) echo "unknown scenario $s" >&2; FAILED=1 ;;
   esac
 done

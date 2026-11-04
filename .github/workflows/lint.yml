@@ -1,0 +1,41 @@
+name: lint
+# ISO builds are 20 minutes and 2 GB, so pull requests get the fast checks:
+# shell syntax and ShellCheck, YAML that Calamares and the harness read, and a
+# dry parse of the package lists. The build itself runs on ep-ai through
+# harness/run-remote.sh (see README) and, on demand, in build.yml.
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck and bash -n
+        run: |
+          sudo apt-get install -y -qq shellcheck >/dev/null
+          files=$(git ls-files 'build/*.sh' 'harness/*.sh' 'build/rootfs/usr/lib/quotient-os/*' 'build/live/usr/lib/quotient-os/*')
+          for f in $files; do bash -n "$f"; done
+          shellcheck -S warning -e SC1091,SC2016,SC2029 $files
+      - name: Calamares and harness YAML
+        run: |
+          python3 - <<'EOF'
+          import glob, sys, yaml
+          bad = 0
+          for f in glob.glob('build/live/etc/calamares/**/*.conf', recursive=True) + ['build/live/etc/calamares/settings.conf', 'build/live/etc/calamares/branding/quotient/branding.desc']:
+              try:
+                  yaml.safe_load(open(f))
+              except Exception as e:
+                  print(f'{f}: {e}'); bad += 1
+          sys.exit(bad)
+          EOF
+      - name: Package lists
+        run: |
+          for f in build/packages-base.txt build/packages-live.txt; do
+            grep -vE '^(#|$)' "$f" | grep -vE '^[a-z0-9][a-z0-9.+-]+$' && { echo "bad line in $f"; exit 1; } || true
+          done
+      - name: systemd units
+        run: |
+          sudo apt-get install -y -qq systemd >/dev/null
+          for u in $(git ls-files 'build/*/usr/lib/systemd/system/*.service'); do systemd-analyze verify --man=no "$u" 2>&1 | grep -v "Unit .* not found\|Command .* is not executable\|Failed to create" || true; done
