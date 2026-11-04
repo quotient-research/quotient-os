@@ -1,0 +1,33 @@
+componentName: quotient
+welcomeStyleCalamares: false
+welcomeExpandingLogo: false
+windowExpanding: fullscreen
+windowSize: 1024px,720px
+windowPlacement: center
+sidebar: none
+navigation: widget
+strings:
+  productName: Quotient Mainframe
+  shortProductName: Quotient
+  version: "QuotientOS"
+  shortVersion: ""
+  versionedName: QuotientOS
+  shortVersionedName: QuotientOS
+  bootloaderEntryName: QuotientOS
+  productUrl: https://www.quotientsoft.com/
+  supportUrl: https://www.quotientsoft.com/
+  knownIssuesUrl: https://www.quotientsoft.com/
+  releaseNotesUrl: https://www.quotientsoft.com/
+images:
+  productLogo: quotient-mark.svg
+  productIcon: quotient-mark.svg
+  productWelcome: quotient-lockup-dark.svg
+slideshow: show.qml
+slideshowAPI: 2
+style:
+  sidebarBackground: "#0E1110"
+  sidebarText: "#ECEFED"
+  sidebarTextHighlight: "#2FCF87"
+  sidebarTextSelect: "#0B1410"
+uploadServer:
+  type: none

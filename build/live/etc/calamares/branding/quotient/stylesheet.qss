@@ -1,0 +1,5 @@
+/* Spike: kit palette only. Phase 2 does the real design. */
+QWidget { font-family: "DejaVu Sans"; font-size: 14px; color: #111513; background: #FFFFFF; }
+QPushButton { border: 2px solid #0E1110; border-radius: 6px; padding: 8px 18px; background: #FFFFFF; }
+QPushButton:default, #view-button-next { background: #2FCF87; color: #0B1410; }
+QProgressBar::chunk { background: #2FCF87; }
