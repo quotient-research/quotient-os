@@ -129,8 +129,10 @@ scenario() {
   sudo_vm "ufw status" | grep -q 'Status: active' && pass "$id ufw active" || fail "$id ufw not active"
   sudo_vm "ufw status" | grep -qE '^80(/tcp)? ' && pass "$id ufw allows 80" || fail "$id ufw has no 80 allow"
   ssh_vm 'systemctl is-active quotient-console.service' | grep -q active && pass "$id status console on tty1" || fail "$id console not active"
-  ssh_vm 'systemctl is-active getty@tty1.service' | grep -q inactive && pass "$id no getty on tty1" || fail "$id getty on tty1"
-  TELEM=$(ssh_vm "dpkg-query -W -f='\${Package} ' ubuntu-report apport whoopsie popularity-contest ubuntu-advantage-tools ubuntu-pro-client 2>/dev/null" || true)
+  # is-active exits 3 for an inactive unit; compare the text, don't pipe (pipefail).
+  [ "$(ssh_vm 'systemctl is-active getty@tty1.service' || true)" = inactive ] && pass "$id no getty on tty1" || fail "$id getty on tty1"
+  # dpkg-query lists packages it merely knows about; keep only installed ones.
+  TELEM=$(ssh_vm "dpkg-query -W -f='\${Package} \${db:Status-Status}\n' ubuntu-report apport whoopsie popularity-contest ubuntu-advantage-tools ubuntu-pro-client 2>/dev/null | awk '\$2==\"installed\"{printf \"%s \", \$1}'" || true)
   [ -z "$TELEM" ] && pass "$id no telemetry packages" || fail "$id telemetry packages: $TELEM"
   ssh_vm 'systemctl is-active NetworkManager avahi-daemon ssh' | grep -vq active && fail "$id a base service is down" || pass "$id NetworkManager, Avahi, SSH active"
   ssh_vm 'test -f /etc/quotient/install.conf && grep -q "^http_port=80" /etc/quotient/install.conf' && pass "$id install.conf preseeded" || fail "$id install.conf missing"
