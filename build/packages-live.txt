@@ -9,4 +9,4 @@ xkb-data
 squashfs-tools
 rsync
 cryptsetup-bin
-fonts-ibm-plex
+fonts-ibm-plex   # multiverse (OFL): IBM Plex Sans and Mono for the installer

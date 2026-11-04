@@ -146,13 +146,13 @@ cat > "$CHROOT/etc/apt/sources.list.d/ubuntu.sources" <<EOF
 Types: deb
 URIs: $MIRROR
 Suites: $SUITE $SUITE-updates
-Components: main restricted universe
+Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
 Types: deb
 URIs: http://security.ubuntu.com/ubuntu
 Suites: $SUITE-security
-Components: main restricted universe
+Components: main restricted universe multiverse
 Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 rm -f "$CHROOT/etc/apt/sources.list"
@@ -296,7 +296,7 @@ log "Live layer (live-boot, Calamares, cage) as an overlay on the base"
 rm -rf "$LIVE_UPPER" "$LIVE_WORK" "$MERGED"; mkdir -p "$LIVE_UPPER" "$LIVE_WORK" "$MERGED"
 mount -t overlay overlay -o "lowerdir=$CHROOT,upperdir=$LIVE_UPPER,workdir=$LIVE_WORK" "$MERGED"
 in_chroot "$MERGED" apt-get install -y -qq --no-install-recommends \
-  $(grep -v '^#' "$HERE/packages-live.txt" | tr '\n' ' ')
+  $(grep -v '^#' "$HERE/packages-live.txt" | sed 's/ *#.*//' | tr '\n' ' ')
 cp -a "$HERE/live/." "$MERGED/"
 chmod +x "$MERGED"/usr/lib/quotient-os/*
 in_chroot "$MERGED" systemctl enable quotient-installer serial-getty@ttyS0 >/dev/null 2>&1 || true
