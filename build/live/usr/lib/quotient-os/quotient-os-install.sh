@@ -13,13 +13,23 @@
 set -euo pipefail
 ANSWERS=${1:-/run/live/medium/quotient/answers.conf}
 LOG=/var/log/quotient-os-install.log
-exec > >(tee -a "$LOG") 2>&1
+# Progress goes to the log and to the console (tty1, or the serial port when
+# the kernel command line names one), so an unattended install can be watched.
+exec > >(tee -a "$LOG" /dev/console) 2>&1
 log() { printf '\033[1;32m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
 
 [ -r "$ANSWERS" ] || die "no answers file at $ANSWERS"
-# shellcheck disable=SC1090
-. "$ANSWERS"
+# key=value per line; values may contain spaces (an SSH public key) and are
+# never evaluated as shell.
+while IFS= read -r line || [ -n "$line" ]; do
+  case "$line" in ''|'#'*) continue ;; esac
+  key=${line%%=*}; value=${line#*=}
+  case "$key" in
+    disk|name|user|password|locale|keyboard|timezone|poweroff|ssh_key) printf -v "$key" '%s' "$value" ;;
+    *) log "ignoring unknown answer '$key'" ;;
+  esac
+done < "$ANSWERS"
 : "${disk:?disk= is required}" "${name:?name= is required}" "${user:?user= is required}" "${password:?password= is required}"
 locale=${locale:-en_US.UTF-8}; keyboard=${keyboard:-us}; timezone=${timezone:-Etc/UTC}; poweroff=${poweroff:-0}
 [ -b "$disk" ] || die "$disk is not a block device"
