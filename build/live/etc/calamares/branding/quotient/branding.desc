@@ -14,7 +14,7 @@ strings:
   shortVersion: ""
   versionedName: Quotient Mainframe
   shortVersionedName: Quotient Mainframe
-  bootloaderEntryName: QuotientOS
+  bootloaderEntryName: ubuntu
   productUrl: https://www.quotientsoft.com/
   supportUrl: https://www.quotientsoft.com/
   knownIssuesUrl: https://www.quotientsoft.com/
