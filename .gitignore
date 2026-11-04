@@ -1,0 +1,6 @@
+out/
+logs/
+*.iso
+*.deb
+*.snap
+*.assert
