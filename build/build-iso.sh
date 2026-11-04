@@ -260,13 +260,17 @@ PLY=$CHROOT/usr/share/plymouth/themes/quotient
 rsvg-convert -w 128 -h 128 "$HERE/live/etc/calamares/branding/quotient/quotient-mark.svg" -o "$PLY/mark.png"
 rsvg-convert "$PLY/track.svg" -o "$PLY/track.png"; rsvg-convert "$PLY/fill.svg" -o "$PLY/fill.png"
 rm -f "$PLY"/*.svg
-in_chroot "$CHROOT" plymouth-set-default-theme quotient >/dev/null 2>&1 || log "plymouth-set-default-theme failed (non-fatal)"
-# The status console (tty1) is a Go program; the bash version stays as fallback.
+# Ubuntu picks the splash through alternatives (no plymouth-set-default-theme).
+in_chroot "$CHROOT" update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/quotient/quotient.plymouth 200 >/dev/null
+in_chroot "$CHROOT" update-alternatives --set default.plymouth /usr/share/plymouth/themes/quotient/quotient.plymouth >/dev/null
+# The status console (tty1) is a Go program; console.sh is the bash fallback.
+rm -f "$CHROOT/usr/lib/quotient-os/console"
 if command -v go >/dev/null; then
   ( cd "$HERE/../console" && CGO_ENABLED=0 GOFLAGS=-mod=mod go build -trimpath -ldflags="-s -w" -o "$CHROOT/usr/lib/quotient-os/console" . ) \
     && log "console built with $(go version | awk '{print $3}')" || die "console build failed"
 else
   log "no Go on this host: shipping the bash console"
+  cp "$CHROOT/usr/lib/quotient-os/console.sh" "$CHROOT/usr/lib/quotient-os/console"
 fi
 chmod +x "$CHROOT"/usr/lib/quotient-os/*
 # Nothing phones home but Quotient and Ubuntu security updates.
