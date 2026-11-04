@@ -43,6 +43,14 @@ exec 9>/tmp/quotient-os-harness.lock
 flock -n 9 || { echo "another QuotientOS harness run is in progress" >&2; exit 3; }
 if pgrep -f 'install-harness/harness.sh run' >/dev/null; then echo "the quotient-server install harness is running" >&2; exit 3; fi
 
+# Docker's FORWARD DROP policy on the host drops VM traffic unless the LXD
+# bridge is allowed through DOCKER-USER; a host reboot loses these rules.
+if sudo -n iptables -S DOCKER-USER >/dev/null 2>&1; then
+  for d in i o; do
+    sudo -n iptables -C DOCKER-USER -$d lxdbr0 -j ACCEPT 2>/dev/null || sudo -n iptables -I DOCKER-USER -$d lxdbr0 -j ACCEPT
+  done
+fi
+
 NAME=lakehouse; USER_=owner; PASS=$(openssl rand -hex 8)
 SSHKEY=$LOGS/id_ed25519; ssh-keygen -q -t ed25519 -N '' -f "$SSHKEY" </dev/null
 SSH_OPTS=(-i "$SSHKEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR)
