@@ -26,7 +26,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in ''|'#'*) continue ;; esac
   key=${line%%=*}; value=${line#*=}
   case "$key" in
-    disk|name|user|password|locale|keyboard|timezone|poweroff|ssh_key) printf -v "$key" '%s' "$value" ;;
+    disk|name|user|password|locale|keyboard|timezone|poweroff|ssh_key|serial) printf -v "$key" '%s' "$value" ;;
     *) log "ignoring unknown answer '$key'" ;;
   esac
 done < "$ANSWERS"
@@ -87,6 +87,8 @@ ch grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ub
 ch grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot >/dev/null 2>&1 || log "no EFI variables (BIOS boot?); removable path installed"
 ch grub-install --target=i386-pc "$disk" >/dev/null 2>&1 || log "BIOS grub-install skipped"
 ch sh -c 'sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/; s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"/" /etc/default/grub; grep -q GRUB_DISTRIBUTOR /etc/default/grub && sed -i "s/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR=QuotientOS/" /etc/default/grub'
+# serial=1 (harness): kernel messages and a login on the serial port as well.
+[ "${serial:-0}" = 1 ] && ch sh -c 'sed -i "s/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX=\"console=tty1 console=ttyS0,115200n8\"/" /etc/default/grub'
 ch update-initramfs -u -k all >/dev/null 2>&1
 ch update-grub >/dev/null 2>&1
 

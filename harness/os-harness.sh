@@ -57,6 +57,7 @@ password=$PASS
 ssh_key=$(cat "$SSHKEY.pub")
 timezone=America/New_York
 poweroff=1
+serial=1
 EOF
 HISO=$LOGS/harness.iso
 log "Remastering $ISO with answers → $HISO"
