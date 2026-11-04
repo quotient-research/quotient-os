@@ -202,7 +202,8 @@ if [ "$SEED" = 1 ]; then
     snap known --remote account-key public-key-sha3-384="$KEYID" > key.assert
     snap known --remote account account-id=generic > account.assert
     [ -s model.assert ] && [ -s key.assert ] && [ -s account.assert ] || { echo "could not fetch the generic-classic model assertions" >&2; exit 1; }
-    cat account.assert key.assert model.assert > model )
+    # A bundle is assertions separated by exactly one blank line.
+    for f in account key model; do sed -e '${/^$/d}' "$f.assert"; echo; done > model )
   cp "$SNAP_DL/model" "$SEED_DIR/assertions/model"
   for s in snapd "$BASE" microk8s; do
     rev=$(grep -E '^snap-revision:' "$SNAP_DL/$s.assert" | head -1 | awk '{print $2}')
@@ -239,6 +240,9 @@ echo "QuotientOS $VERSION ($CHANNEL, quotient-server-tools $DEB_VERSION)" > "$CH
 leave_chroot "$CHROOT"
 
 log "Base squashfs"
+# The image's root inode is the chroot directory: it must be root 0755, or
+# snapd (and more) refuse to work on the installed system.
+chown root:root "$CHROOT"; chmod 755 "$CHROOT"
 rm -rf "$ISO_DIR"; mkdir -p "$ISO_DIR/live" "$ISO_DIR/boot/grub" "$ISO_DIR/EFI/boot" "$ISO_DIR/.disk"
 mksquashfs "$CHROOT" "$ISO_DIR/live/10-base.squashfs" -comp zstd -Xcompression-level 15 -noappend -quiet \
   -e .debootstrap-done -wildcards -e 'var/cache/apt/archives/*.deb' -e 'boot/efi/*'

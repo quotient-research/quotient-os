@@ -53,6 +53,7 @@ mkfs.ext4 -q -F -L quotient-root "$(p 3)"
 log "Unpacking the base system"
 mkdir -p "$T"; mount "$(p 3)" "$T"
 unsquashfs -f -d "$T" -no-progress "$BASE" >/dev/null
+chown root:root "$T"; chmod 755 "$T"
 mkdir -p "$T/boot/efi"; mount "$(p 1)" "$T/boot/efi"
 
 log "System settings: $name, $user, $locale, $keyboard, $timezone"
