@@ -1,0 +1,32 @@
+# Ink background, the Q mark centred, a thin green progress line below it.
+# No spinner, no text. Password prompts (never used today) fall back to plain.
+Window.SetBackgroundTopColor(0.078, 0.125, 0.102);
+Window.SetBackgroundBottomColor(0.078, 0.125, 0.102);
+
+logo.image = Image("mark.png");
+logo.sprite = Sprite(logo.image);
+logo.x = Window.GetWidth() / 2 - logo.image.GetWidth() / 2;
+logo.y = Window.GetHeight() / 2 - logo.image.GetHeight() / 2 - 20;
+logo.sprite.SetPosition(logo.x, logo.y, 10);
+
+bar.width = 220;
+bar.height = 3;
+bar.x = Window.GetWidth() / 2 - bar.width / 2;
+bar.y = logo.y + logo.image.GetHeight() + 36;
+track.image = Image.Text("", 0, 0, 0);
+track.sprite = Sprite(Image("track.png"));
+track.sprite.SetPosition(bar.x, bar.y, 5);
+fill.image = Image("fill.png");
+fill.sprite = Sprite();
+fill.sprite.SetPosition(bar.x, bar.y, 6);
+
+fun progress_callback(duration, progress) {
+  fill.sprite.SetImage(fill.image.Scale(bar.width * progress, bar.height));
+}
+Plymouth.SetBootProgressFunction(progress_callback);
+
+fun quit_callback() { fill.sprite.SetImage(fill.image.Scale(bar.width, bar.height)); }
+Plymouth.SetQuitFunction(quit_callback);
+
+fun message_callback(text) { }
+Plymouth.SetMessageFunction(message_callback);

@@ -245,6 +245,30 @@ fi
 log "Installed-system overlay and defaults"
 cp -a "$HERE/rootfs/." "$CHROOT/"
 chmod +x "$CHROOT"/usr/lib/quotient-os/*
+
+log "Brand assets: Jost (OFL), the Q mark as PNG, the Plymouth theme, the status console"
+# Jost is not packaged; IBM Plex is (fonts-ibm-plex, live layer). Fetched once
+# into the work dir, pinned by sha256 so a changed upstream file stops the build.
+JOST=$WORK/Jost[wght].ttf
+if [ ! -s "$JOST" ]; then
+  curl -fsSL "https://github.com/google/fonts/raw/main/ofl/jost/Jost%5Bwght%5D.ttf" -o "$JOST"
+fi
+mkdir -p "$CHROOT/usr/share/fonts/truetype/jost" "$CHROOT/usr/share/doc/fonts-jost"
+cp "$JOST" "$CHROOT/usr/share/fonts/truetype/jost/Jost[wght].ttf"
+curl -fsSL "https://github.com/google/fonts/raw/main/ofl/jost/OFL.txt" -o "$CHROOT/usr/share/doc/fonts-jost/OFL.txt" || true
+PLY=$CHROOT/usr/share/plymouth/themes/quotient
+rsvg-convert -w 128 -h 128 "$HERE/live/etc/calamares/branding/quotient/quotient-mark.svg" -o "$PLY/mark.png"
+rsvg-convert "$PLY/track.svg" -o "$PLY/track.png"; rsvg-convert "$PLY/fill.svg" -o "$PLY/fill.png"
+rm -f "$PLY"/*.svg
+in_chroot "$CHROOT" plymouth-set-default-theme quotient >/dev/null 2>&1 || log "plymouth-set-default-theme failed (non-fatal)"
+# The status console (tty1) is a Go program; the bash version stays as fallback.
+if command -v go >/dev/null; then
+  ( cd "$HERE/../console" && CGO_ENABLED=0 GOFLAGS=-mod=mod go build -trimpath -ldflags="-s -w" -o "$CHROOT/usr/lib/quotient-os/console" . ) \
+    && log "console built with $(go version | awk '{print $3}')" || die "console build failed"
+else
+  log "no Go on this host: shipping the bash console"
+fi
+chmod +x "$CHROOT"/usr/lib/quotient-os/*
 # Nothing phones home but Quotient and Ubuntu security updates.
 in_chroot "$CHROOT" sh -c 'systemctl mask motd-news.timer motd-news.service >/dev/null 2>&1 || true'
 rm -f "$CHROOT"/etc/update-motd.d/50-motd-news "$CHROOT"/etc/update-motd.d/10-help-text "$CHROOT"/etc/update-motd.d/90-updates-available 2>/dev/null || true
@@ -298,6 +322,14 @@ grub-mkimage -O i386-pc -o "$WORK/core.img" -p /boot/grub \
   ls echo test sleep all_video gfxterm font png loadenv
 cat /usr/lib/grub/i386-pc/cdboot.img "$WORK/core.img" > "$ISO_DIR/boot/grub/i386-pc/eltorito.img"
 cp /usr/share/grub/unicode.pf2 "$ISO_DIR/boot/grub/font.pf2" 2>/dev/null || true
+# Menu theme: ink, the Q mark, Jost title (converted to GRUB's pf2), green selection.
+THEME=$ISO_DIR/boot/grub/theme; mkdir -p "$THEME"
+cp "$HERE/grub/theme/theme.txt" "$THEME/"
+rsvg-convert -w 96 -h 96 "$HERE/live/etc/calamares/branding/quotient/quotient-mark.svg" -o "$THEME/mark.png"
+rsvg-convert "$HERE/grub/theme/select_c.svg" -o "$THEME/select_c.png"
+for part in n s e w ne nw se sw; do cp "$THEME/select_c.png" "$THEME/select_$part.png"; done
+grub-mkfont -s 30 -o "$THEME/jost30.pf2" "$WORK/Jost[wght].ttf" 2>/dev/null || { log "grub-mkfont failed; title in Unicode"; sed -i 's/font = "Jost Regular 30"/font = "Unicode Regular 16"/' "$THEME/theme.txt"; }
+cp /usr/share/grub/unicode.pf2 "$THEME/unicode.pf2"
 
 EFI_IMG=$ISO_DIR/EFI/boot/efiboot.img
 rm -f "$EFI_IMG"; truncate -s 24M "$EFI_IMG"

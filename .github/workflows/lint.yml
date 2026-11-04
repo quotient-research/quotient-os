@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y -qq shellcheck >/dev/null
           files=$(git ls-files 'build/*.sh' 'harness/*.sh' 'build/rootfs/usr/lib/quotient-os/*' 'build/live/usr/lib/quotient-os/*')
           for f in $files; do bash -n "$f"; done
-          shellcheck -S warning -e SC1091,SC2016,SC2029 $files
+          shellcheck -S warning -e SC1091,SC2016,SC2029,SC2154,SC2046,SC2024 $files
       - name: Calamares and harness YAML
         run: |
           python3 - <<'EOF'

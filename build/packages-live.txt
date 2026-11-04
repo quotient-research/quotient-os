@@ -9,3 +9,4 @@ xkb-data
 squashfs-tools
 rsync
 cryptsetup-bin
+fonts-ibm-plex

@@ -1,5 +1,108 @@
-/* Spike: kit palette only. Phase 2 does the real design. */
-QWidget { font-family: "DejaVu Sans"; font-size: 14px; color: #111513; background: #FFFFFF; }
-QPushButton { border: 2px solid #0E1110; border-radius: 6px; padding: 8px 18px; background: #FFFFFF; }
-QPushButton:default, #view-button-next { background: #2FCF87; color: #0B1410; }
-QProgressBar::chunk { background: #2FCF87; }
+/* QuotientOS installer: the v2 theme (docs/design/THEME.md). Paper canvas,
+   ink text and 2px ink borders, one green accent, Jost for titles and
+   buttons, IBM Plex Sans for body, Plex Mono for machine values. Hard shadows
+   can't be drawn in QSS; buttons get the kit's 3px lip as a thicker bottom
+   border instead. */
+
+QWidget {
+  font-family: "IBM Plex Sans", "DejaVu Sans";
+  font-size: 15px;
+  color: #14201A;
+  background: #FBFAF6;
+  selection-background-color: #CFF2E2;
+  selection-color: #14201A;
+}
+QLabel { background: transparent; }
+QLabel[class="title"], #welcomeTitle, QLabel#title {
+  font-family: "Jost", "IBM Plex Sans";
+  font-size: 28px;
+  font-weight: 700;
+}
+#mainText, #welcomeText { color: #45514A; }
+QToolTip { background: #14201A; color: #FBFAF6; border: 0; padding: 6px 8px; }
+
+/* Buttons: Jost 600, ink border, radius 8, lip. Primary = green, ink label. */
+QPushButton, QToolButton {
+  font-family: "Jost", "IBM Plex Sans";
+  font-size: 15px;
+  font-weight: 600;
+  color: #14201A;
+  background: #FFFFFF;
+  border: 2px solid #14201A;
+  border-bottom-width: 5px;
+  border-radius: 8px;
+  min-height: 28px;
+  padding: 6px 22px;
+}
+QPushButton:hover { background: #F2F1E9; }
+QPushButton:pressed { border-bottom-width: 2px; margin-top: 3px; }
+QPushButton:disabled { color: #8C9691; border-color: #8C9691; background: #F2F1E9; }
+#view-button-next, QPushButton:default { background: #2FCF87; }
+#view-button-next:hover, QPushButton:default:hover { background: #4ADE9A; }
+#view-button-next:disabled { background: #CFF2E2; color: #58645C; border-color: #8C9691; }
+#view-button-cancel { border-color: #14201A; }
+
+/* Inputs: white, 2px ink, radius 8, green focus. */
+QLineEdit, QComboBox, QSpinBox, QTextEdit, QPlainTextEdit {
+  background: #FFFFFF;
+  border: 2px solid #14201A;
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-height: 28px;
+  selection-background-color: #CFF2E2;
+}
+QLineEdit:focus, QComboBox:focus { border-color: #12935C; }
+QComboBox::drop-down { border: 0; width: 28px; }
+QComboBox QAbstractItemView {
+  background: #FFFFFF; border: 2px solid #14201A; border-radius: 8px;
+  selection-background-color: #CFF2E2; selection-color: #14201A; padding: 4px;
+}
+QLineEdit[readOnly="true"] { background: #F2F1E9; }
+
+/* Lists and trees (languages, keyboard layouts, partition tables). */
+QListView, QTreeView, QListWidget, QTreeWidget, QTableView {
+  background: #FFFFFF;
+  border: 2px solid #14201A;
+  border-radius: 8px;
+  alternate-background-color: #FBFAF6;
+  outline: 0;
+}
+QListView::item, QTreeView::item { padding: 4px 6px; min-height: 26px; }
+QListView::item:selected, QTreeView::item:selected { background: #CFF2E2; color: #14201A; }
+QListView::item:hover, QTreeView::item:hover { background: #F2F1E9; }
+QHeaderView::section {
+  background: #E2EDE5; color: #14201A; border: 0; border-bottom: 2px solid #14201A;
+  padding: 6px 8px; font-family: "IBM Plex Mono"; font-size: 12px; font-weight: 600; text-transform: uppercase;
+}
+
+/* Checks and radios: ink box, green when on. */
+QCheckBox, QRadioButton { spacing: 10px; background: transparent; }
+QCheckBox::indicator, QRadioButton::indicator { width: 20px; height: 20px; border: 2px solid #14201A; background: #FFFFFF; }
+QCheckBox::indicator { border-radius: 4px; }
+QRadioButton::indicator { border-radius: 11px; }
+QCheckBox::indicator:checked, QRadioButton::indicator:checked { background: #2FCF87; }
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled { border-color: #8C9691; background: #F2F1E9; }
+
+/* Progress: ink track, green fill, no animation theatre. */
+QProgressBar {
+  background: #F2F1E9; border: 2px solid #14201A; border-radius: 8px; text-align: center;
+  color: #14201A; font-family: "IBM Plex Mono"; font-size: 12px; min-height: 22px;
+}
+QProgressBar::chunk { background: #2FCF87; border-radius: 5px; margin: 1px; }
+
+/* Message boxes and dialogs: a window with a 2px ink border. */
+QMessageBox, QDialog { background: #FFFFFF; border: 2px solid #14201A; }
+QMessageBox QLabel { background: transparent; }
+
+QScrollBar:vertical { background: #F2F1E9; width: 14px; margin: 0; border-left: 2px solid #14201A; }
+QScrollBar::handle:vertical { background: #14201A; min-height: 30px; border-radius: 0; margin: 3px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar:horizontal { background: #F2F1E9; height: 14px; border-top: 2px solid #14201A; }
+QScrollBar::handle:horizontal { background: #14201A; min-width: 30px; margin: 3px; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+/* Partition page: the disk chooser and the "erase" choice buttons. */
+#partitionBarView, #partitionLabelsView { background: transparent; border: 0; }
+QGroupBox { border: 2px solid #14201A; border-radius: 8px; margin-top: 14px; padding-top: 10px; background: #FFFFFF; }
+QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 6px; font-family: "IBM Plex Mono"; font-size: 12px; font-weight: 600; background: #FBFAF6; }
+QFrame[frameShape="4"], QFrame[frameShape="5"] { color: #D8D6CC; }

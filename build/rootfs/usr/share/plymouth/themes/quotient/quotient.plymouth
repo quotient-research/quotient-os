@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Quotient
+Description=QuotientOS boot splash: the Q mark on ink
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/quotient
+ScriptFile=/usr/share/plymouth/themes/quotient/quotient.script
