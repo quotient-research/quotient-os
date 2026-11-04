@@ -29,11 +29,13 @@ REPO_KEY_FPR=AE772CBCB3BC29B247A794256781AAC9BFEA7E51
 
 ANSWERS=""
 REMASTER=0
+FROM_BOOT=0
 ISO_OUT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --answers) ANSWERS="$2"; shift 2 ;;       # put an unattended answers file on the medium (harness)
     --remaster) REMASTER=1; shift ;;         # only rebuild the ISO from the last build tree
+    --from-boot) FROM_BOOT=1; shift ;;       # reuse the squashfs images, redo the boot files and the ISO
     --iso-out) ISO_OUT="$2"; shift 2 ;;
     --channel) CHANNEL="$2"; shift 2 ;;
     --work) WORK="$2"; shift 2 ;;
@@ -62,6 +64,7 @@ LIVE_UPPER=$WORK/live-upper
 LIVE_WORK=$WORK/live-work
 MERGED=$WORK/merged
 APT_CACHE=$WORK/apt-cache
+EFI_IMG=$ISO_DIR/EFI/boot/efiboot.img
 mkdir -p "$WORK" "$OUT" "$APT_CACHE"
 LOG=$OUT/build-$STAMP.log
 exec > >(tee -a "$LOG") 2>&1
@@ -120,7 +123,13 @@ if [ "$REMASTER" = 1 ]; then
   DEB_VERSION=$(awk -F= '/^package=/{print $2}' "$ISO_DIR/.disk/quotient-os")
 fi
 
-if [ "$REMASTER" = 0 ]; then
+if [ "$FROM_BOOT" = 1 ]; then
+  [ -f "$ISO_DIR/live/20-live.squashfs" ] || die "no squashfs images at $ISO_DIR/live to reuse"
+  read -r _ VERSION CHANNEL _ DEB_VERSION < <(tr -d '(),' < "$CHROOT/etc/quotient-os-release")
+  log "Reusing images (QuotientOS $VERSION, $CHANNEL, package $DEB_VERSION)"
+fi
+
+if [ "$REMASTER" = 0 ] && [ "$FROM_BOOT" = 0 ]; then
 # ---------------------------------------------------------------- 1. base
 if [ -f "$CHROOT/.debootstrap-done" ] && [ "$KEEP_CHROOT" = 1 ]; then
   log "Reusing debootstrap chroot at $CHROOT"
@@ -244,8 +253,12 @@ umount "$MERGED"
 mksquashfs "$LIVE_UPPER" "$ISO_DIR/live/20-live.squashfs" -comp zstd -Xcompression-level 15 -noappend -quiet \
   -wildcards -e 'var/cache/apt/archives/*.deb'
 
+fi # FROM_BOOT
+
+if [ "$REMASTER" = 0 ]; then
 # ---------------------------------------------------------------- 3. boot
 log "GRUB (BIOS) and the EFI image (shim + signed GRUB)"
+mkdir -p "$ISO_DIR/boot/grub" "$ISO_DIR/EFI/boot" "$ISO_DIR/.disk"
 cp "$HERE/grub/grub.cfg" "$ISO_DIR/boot/grub/grub.cfg"
 sed -i "s/@VERSION@/$VERSION/g" "$ISO_DIR/boot/grub/grub.cfg"
 mkdir -p "$ISO_DIR/boot/grub/i386-pc"
@@ -260,14 +273,21 @@ EFI_IMG=$ISO_DIR/EFI/boot/efiboot.img
 rm -f "$EFI_IMG"; truncate -s 24M "$EFI_IMG"
 mkfs.vfat -F 16 -n EFIBOOT "$EFI_IMG" >/dev/null
 mmd -i "$EFI_IMG" ::/EFI ::/EFI/boot ::/EFI/ubuntu
-mcopy -i "$EFI_IMG" "$CHROOT/usr/lib/shim/shimx64.efi.signed" ::/EFI/boot/bootx64.efi
-mcopy -i "$EFI_IMG" "$CHROOT/usr/lib/shim/mmx64.efi.signed" ::/EFI/boot/mmx64.efi
-mcopy -i "$EFI_IMG" "$CHROOT/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed" ::/EFI/boot/grubx64.efi
+# shimx64.efi.signed is an alternatives symlink inside the chroot: resolve it there.
+SHIM=$CHROOT$(chroot "$CHROOT" readlink -f /usr/lib/shim/shimx64.efi.signed)
+GRUB_EFI=$CHROOT$(chroot "$CHROOT" readlink -f /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed)
+MOKM=$CHROOT/usr/lib/shim/mmx64.efi   # MokManager ships signed under its plain name
+# Only shim, GRUB and MokManager. Never fbx64.efi (shim's fallback loader): on
+# removable media it takes over from shim, finds no BOOT*.CSV and resets the machine.
+mcopy -i "$EFI_IMG" "$SHIM" ::/EFI/boot/bootx64.efi
+[ -f "$MOKM" ] && mcopy -i "$EFI_IMG" "$MOKM" ::/EFI/boot/mmx64.efi
+mcopy -i "$EFI_IMG" "$GRUB_EFI" ::/EFI/boot/grubx64.efi
 mcopy -i "$EFI_IMG" "$HERE/grub/grub-efi.cfg" ::/EFI/ubuntu/grub.cfg
 # The same loaders on the ISO filesystem for firmware that reads the ISO9660 side.
-cp "$CHROOT/usr/lib/shim/shimx64.efi.signed" "$ISO_DIR/EFI/boot/bootx64.efi"
-cp "$CHROOT/usr/lib/shim/mmx64.efi.signed" "$ISO_DIR/EFI/boot/mmx64.efi"
-cp "$CHROOT/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed" "$ISO_DIR/EFI/boot/grubx64.efi"
+rm -f "$ISO_DIR"/EFI/boot/*.efi
+cp "$SHIM" "$ISO_DIR/EFI/boot/bootx64.efi"
+[ -f "$MOKM" ] && cp "$MOKM" "$ISO_DIR/EFI/boot/mmx64.efi"
+cp "$GRUB_EFI" "$ISO_DIR/EFI/boot/grubx64.efi"
 mkdir -p "$ISO_DIR/EFI/ubuntu"; cp "$HERE/grub/grub-efi.cfg" "$ISO_DIR/EFI/ubuntu/grub.cfg"
 
 echo "QuotientOS $VERSION" > "$ISO_DIR/.disk/info"
@@ -275,6 +295,9 @@ printf 'version=%s\nchannel=%s\npackage=%s\nbuilt=%s\n' "$VERSION" "$CHANNEL" "$
 
 fi # REMASTER
 
+# The menu is cheap to refresh on every remaster.
+cp "$HERE/grub/grub.cfg" "$ISO_DIR/boot/grub/grub.cfg"
+sed -i "s/@VERSION@/$VERSION/g" "$ISO_DIR/boot/grub/grub.cfg"
 rm -rf "$ISO_DIR/quotient"
 if [ -n "$ANSWERS" ]; then
   mkdir -p "$ISO_DIR/quotient"; cp "$ANSWERS" "$ISO_DIR/quotient/answers.conf"

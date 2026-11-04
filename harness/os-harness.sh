@@ -23,6 +23,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$LOGS"
+LOGS=$(readlink -f "$LOGS")
+[ -z "$ISO" ] || ISO=$(readlink -f "$ISO")
 RUNLOG=$LOGS/run.log
 exec > >(tee -a "$RUNLOG") 2>&1
 log() { printf '\033[1;34m[%s] %s\033[0m\n' "$(date -u +%H:%M:%S)" "$*"; }
@@ -36,7 +38,10 @@ if [ "$CMD" = clean ]; then
 fi
 [ "$CMD" = run ] || { sed -n 2,14p "$0"; exit 2; }
 [ -r "$ISO" ] || { echo "no ISO at $ISO" >&2; exit 2; }
-if pgrep -f '[h]arness.sh run' >/dev/null; then echo "another harness run is in progress" >&2; exit 3; fi
+# One VM at a time on this host: our own lock, and the quotient-server install harness.
+exec 9>/tmp/quotient-os-harness.lock
+flock -n 9 || { echo "another QuotientOS harness run is in progress" >&2; exit 3; }
+if pgrep -f 'install-harness/harness.sh run' >/dev/null; then echo "the quotient-server install harness is running" >&2; exit 3; fi
 
 NAME=lakehouse; USER_=owner; PASS=$(openssl rand -hex 8)
 SSHKEY=$LOGS/id_ed25519; ssh-keygen -q -t ed25519 -N '' -f "$SSHKEY" </dev/null
@@ -74,23 +79,30 @@ wait_for() { # wait_for SECONDS DESCRIPTION CMD...
 }
 
 scenario() {
-  local id=$1 sb=$2 vm=qos-$(echo "$id" | tr 'A-Z' 'a-z')
+  local id=$1 sb=$2 vm
+  vm=qos-$(echo "$id" | tr 'A-Z' 'a-z')
   log "=== $id (secureboot=$sb) on $vm"
   lxc delete -f "$vm" >/dev/null 2>&1 || true
   lxc init "$vm" --empty --vm -c limits.cpu=3 -c limits.memory=4GiB -c "security.secureboot=$sb" -d root,size=30GiB >/dev/null
   lxc config device add "$vm" iso disk source="$HISO" boot.priority=10 >/dev/null
-  lxc start "$vm"
+  # Start with the serial console captured to a log (a VM's console is only
+  # readable live), detached so the harness can keep polling.
+  start_with_console() { # start_with_console VM LOGFILE
+    (setsid nohup script -q -c "lxc start $1 --console" "$2" >/dev/null 2>&1 </dev/null &)
+    sleep 3
+  }
+  start_with_console "$vm" "$LOGS/$id-install-console.log"
   log "Installing from the ISO (unattended)"
+  sleep 60   # the VM must be seen RUNNING before STOPPED means "finished"
   if ! wait_for 1500 "install finished (VM powered off)" sh -c "lxc info $vm | grep -q 'Status: STOPPED'"; then
-    fail "$id install did not finish"; lxc console "$vm" --show-log > "$LOGS/$id-console.log" 2>&1 || true; return
+    fail "$id install did not finish"; return
   fi
-  lxc console "$vm" --show-log > "$LOGS/$id-install-console.log" 2>&1 || true
   lxc config device remove "$vm" iso >/dev/null
-  lxc start "$vm"
+  start_with_console "$vm" "$LOGS/$id-boot-console.log"
   log "Booting the installed disk"
   IP=""
   if ! wait_for 300 "DHCP lease for $NAME" sh -c "ip=\$(lxc network list-leases lxdbr0 --format csv | awk -F, -v n=$NAME '\$1==n{print \$3}' | head -1); [ -n \"\$ip\" ]"; then
-    fail "$id no DHCP lease"; lxc console "$vm" --show-log > "$LOGS/$id-boot-console.log" 2>&1 || true; return
+    fail "$id no DHCP lease"; return
   fi
   IP=$(lxc network list-leases lxdbr0 --format csv | awk -F, -v n="$NAME" '$1==n{print $3}' | head -1)
   log "VM address $IP"
