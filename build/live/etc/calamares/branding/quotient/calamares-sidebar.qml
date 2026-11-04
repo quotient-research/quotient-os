@@ -22,7 +22,7 @@ Rectangle {
         spacing: 14
 
         Image {
-            source: "file://" + Branding.imagePath(Branding.ProductLogo)
+            source: "file:///etc/calamares/branding/quotient/quotient-mark-64.png"
             sourceSize.width: 30; sourceSize.height: 30
             Layout.preferredWidth: 30; Layout.preferredHeight: 30
         }

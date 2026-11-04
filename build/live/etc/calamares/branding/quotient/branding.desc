@@ -20,9 +20,9 @@ strings:
   knownIssuesUrl: https://www.quotientsoft.com/
   releaseNotesUrl: https://www.quotientsoft.com/
 images:
-  productLogo: quotient-mark.svg
-  productIcon: quotient-mark.svg
-  productWelcome: quotient-mark.svg
+  productLogo: quotient-mark-64.png
+  productIcon: quotient-mark-64.png
+  productWelcome: quotient-mark-160.png
 slideshow: show.qml
 slideshowAPI: 2
 style:

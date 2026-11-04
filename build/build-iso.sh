@@ -299,6 +299,10 @@ in_chroot "$MERGED" apt-get install -y -qq --no-install-recommends \
   $(grep -v '^#' "$HERE/packages-live.txt" | sed 's/ *#.*//' | tr '\n' ' ')
 cp -a "$HERE/live/." "$MERGED/"
 chmod +x "$MERGED"/usr/lib/quotient-os/*
+# Qt gives the SVG mark no intrinsic size; the installer uses PNGs made here.
+BR=$MERGED/etc/calamares/branding/quotient
+rsvg-convert -w 64 -h 64 "$BR/quotient-mark.svg" -o "$BR/quotient-mark-64.png"
+rsvg-convert -w 160 -h 160 "$BR/quotient-mark.svg" -o "$BR/quotient-mark-160.png"
 in_chroot "$MERGED" systemctl enable quotient-installer serial-getty@ttyS0 >/dev/null 2>&1 || true
 in_chroot "$MERGED" systemctl disable quotient-os-firstboot quotient-console ssh >/dev/null 2>&1 || true
 in_chroot "$MERGED" sh -c 'update-initramfs -u -k all >/dev/null 2>&1'
