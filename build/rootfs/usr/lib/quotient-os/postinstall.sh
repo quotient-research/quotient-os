@@ -41,6 +41,14 @@ sed -i "s/^#\?host-name=.*/host-name=$HN/" /etc/avahi/avahi-daemon.conf 2>/dev/n
 systemctl enable quotient-os-firstboot.service quotient-console.service NetworkManager ssh avahi-daemon >/dev/null 2>&1 || true
 systemctl disable getty@tty1.service >/dev/null 2>&1 || true
 
+# 4b. A 2 GiB swapfile (no swap partition): both installers end up here.
+if [ ! -e /swapfile ]; then
+  if fallocate -l 2G /swapfile 2>/dev/null; then
+    chmod 600 /swapfile && mkswap -q /swapfile >/dev/null 2>&1 || rm -f /swapfile
+  fi
+fi
+[ -e /swapfile ] && ! grep -q '^/swapfile' /etc/fstab && printf '/swapfile\tnone\tswap\tsw\t0 0\n' >> /etc/fstab
+
 # 5. Ubuntu security updates on their own; Quotient updates through its channel.
 cat > /etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";

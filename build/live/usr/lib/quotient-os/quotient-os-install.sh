@@ -61,7 +61,6 @@ ROOT_UUID=$(blkid -s UUID -o value "$(p 3)"); EFI_UUID=$(blkid -s UUID -o value 
 cat > "$T/etc/fstab" <<EOF
 UUID=$ROOT_UUID  /         ext4  defaults,errors=remount-ro  0 1
 UUID=$EFI_UUID   /boot/efi vfat  umask=0077                  0 1
-/swapfile        none      swap  sw                          0 0
 EOF
 echo "$name" > "$T/etc/hostname"
 printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n\n::1\tlocalhost ip6-localhost ip6-loopback\n' "$name" > "$T/etc/hosts"
@@ -81,7 +80,6 @@ if [ -n "${ssh_key:-}" ]; then
   chmod 700 "$T/home/$user/.ssh"; chmod 600 "$T/home/$user/.ssh/authorized_keys"
   ch chown -R "$user:$user" "/home/$user/.ssh"
 fi
-fallocate -l 2G "$T/swapfile" && chmod 600 "$T/swapfile" && mkswap -q "$T/swapfile"
 
 log "Bootloader (UEFI with Secure Boot, and BIOS)"
 ch grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot --removable --no-nvram >/dev/null 2>&1 || true
