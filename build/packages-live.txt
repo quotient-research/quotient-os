@@ -4,7 +4,6 @@ live-boot-initramfs-tools
 calamares
 qt6-wayland
 cage
-libgl1-mesa-dri
 fonts-dejavu-core
 xkb-data
 squashfs-tools

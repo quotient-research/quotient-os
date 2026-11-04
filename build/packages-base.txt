@@ -1,6 +1,6 @@
 # What the installed Mainframe has. One line per package; # comments.
 # Boot
-linux-generic
+linux-image-generic
 linux-firmware
 initramfs-tools
 grub-efi-amd64

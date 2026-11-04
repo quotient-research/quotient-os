@@ -165,6 +165,22 @@ in_chroot "$CHROOT" sh -c 'echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-
 in_chroot "$CHROOT" apt-get install -y -qq --no-install-recommends \
   $(grep -v '^#' "$HERE/packages-base.txt" | tr '\n' ' ')
 
+# Ubuntu's linux-firmware metapackage pulls every vendor set (~690 MB,
+# pre-compressed, so the squashfs can't shrink it). A Mainframe is an x86 PC
+# with a text console: it needs CPU microcode, Wi-Fi/Ethernet/USB/storage
+# firmware, not datacenter switch ASICs, phone SoCs or GPU acceleration blobs
+# (the console runs on simpledrm without them). The packages stay installed,
+# only their files are dropped; an upgrade may bring some back on disk, which
+# is harmless.
+log "Trimming firmware the Mainframe never loads"
+FW=$CHROOT/usr/lib/firmware
+du -sm "$FW" | awk '{print "  before: "$1" MB"}'
+rm -rf "$FW"/qcom "$FW"/mellanox "$FW"/mrvl/prestera "$FW"/nvidia "$FW"/amdgpu "$FW"/radeon \
+       "$FW"/i915 "$FW"/xe "$FW"/netronome "$FW"/qed "$FW"/dpaa2 "$FW"/ti-connectivity "$FW"/cirrus \
+       "$FW"/intel/ipu "$FW"/intel/vsc "$FW"/intel/vpu "$FW"/intel/ish "$FW"/intel/qat \
+       "$FW"/amdnpu "$FW"/amdtee "$FW"/qlogic "$FW"/cxgb4 "$FW"/liquidio "$FW"/bnx2x "$FW"/cavium "$FW"/imx "$FW"/meson "$FW"/rockchip "$FW"/ti "$FW"/microchip
+du -sm "$FW" | awk '{print "  after:  "$1" MB"}'
+
 log "Quotient APT source ($CHANNEL) and the package for first boot"
 KEY_TMP=$(mktemp)
 curl -fsSL "$REPO_URL/repo.gpg" -o "$KEY_TMP"
@@ -255,7 +271,7 @@ in_chroot "$MERGED" apt-get install -y -qq --no-install-recommends \
   $(grep -v '^#' "$HERE/packages-live.txt" | tr '\n' ' ')
 cp -a "$HERE/live/." "$MERGED/"
 chmod +x "$MERGED"/usr/lib/quotient-os/*
-in_chroot "$MERGED" systemctl enable quotient-installer >/dev/null 2>&1 || true
+in_chroot "$MERGED" systemctl enable quotient-installer serial-getty@ttyS0 >/dev/null 2>&1 || true
 in_chroot "$MERGED" systemctl disable quotient-os-firstboot quotient-console ssh >/dev/null 2>&1 || true
 in_chroot "$MERGED" sh -c 'update-initramfs -u -k all >/dev/null 2>&1'
 in_chroot "$MERGED" apt-get clean

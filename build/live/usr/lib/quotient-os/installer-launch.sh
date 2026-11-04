@@ -10,5 +10,7 @@ if grep -q 'quotient.unattended' /proc/cmdline; then
 fi
 export XDG_RUNTIME_DIR=/run/user/0; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 export QT_QPA_PLATFORM=wayland QT_WAYLAND_DISABLE_WINDOWDECORATION=1
-grep -q nomodeset /proc/cmdline && export WLR_RENDERER=pixman
+# Software rendering everywhere: the live layer carries no Mesa/LLVM (saves
+# ~190 MB), and an installer window needs no GPU. Same path on every machine.
+export WLR_RENDERER=pixman QT_QUICK_BACKEND=software
 exec cage -- calamares -D6
