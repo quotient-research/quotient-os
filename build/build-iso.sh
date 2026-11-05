@@ -254,7 +254,7 @@ chmod +x "$CHROOT"/usr/lib/quotient-os/*
 log "Brand assets: Jost (OFL), the Q mark as PNG, the Plymouth theme, the status console"
 # Jost is not packaged; IBM Plex is (fonts-ibm-plex, live layer). Fetched once
 # into the work dir, pinned by sha256 so a changed upstream file stops the build.
-JOST=$WORK/Jost[wght].ttf
+JOST="$WORK/Jost[wght].ttf"
 if [ ! -s "$JOST" ]; then
   curl -fsSL "https://github.com/google/fonts/raw/main/ofl/jost/Jost%5Bwght%5D.ttf" -o "$JOST"
 fi
