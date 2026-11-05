@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# First boot of an installed QuotientOS: install the bundled
+# First boot of an installed Quotient Mainframe OS: install the bundled
 # quotient-server-tools package. Its postinst then runs the normal first-boot
 # configuration (MicroK8s, manifests, Setup code), non-interactively because
 # /etc/quotient/install.conf was written by the installer.
@@ -7,7 +7,7 @@ set -euo pipefail
 MARK=/var/lib/quotient-os/.firstboot-done
 LOG=/var/log/quotient-os-firstboot.log
 exec >>"$LOG" 2>&1
-echo "=== $(date -u +%FT%TZ) QuotientOS first boot"
+echo "=== $(date -u +%FT%TZ) Quotient Mainframe OS first boot"
 [ -e "$MARK" ] && { echo "already done"; exit 0; }
 
 DEB=$(ls /var/lib/quotient-os/quotient-server-tools_*.deb 2>/dev/null | sort -V | tail -1)

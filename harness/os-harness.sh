@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QuotientOS install harness. Boots an ISO in a throwaway VM, installs, reboots
+# Quotient Mainframe OS install harness. Boots an ISO in a throwaway VM, installs, reboots
 # into the disk and checks that the Mainframe comes up. Runs on ep-ai.
 #
 #   ./os-harness.sh run --iso FILE [--scenarios O1,O2,O3] [--keep] [--logs DIR]
@@ -43,7 +43,7 @@ fi
 [ -r "$ISO" ] || { echo "no ISO at $ISO" >&2; exit 2; }
 # One VM at a time on this host: our own lock, and the quotient-server install harness.
 exec 9>/tmp/quotient-os-harness.lock
-flock -n 9 || { echo "another QuotientOS harness run is in progress" >&2; exit 3; }
+flock -n 9 || { echo "another Quotient Mainframe OS harness run is in progress" >&2; exit 3; }
 if pgrep -f 'install-harness/harness.sh run' >/dev/null; then echo "the quotient-server install harness is running" >&2; exit 3; fi
 
 # Docker's FORWARD DROP policy on the host drops VM traffic unless the LXD

@@ -1,4 +1,4 @@
-# QuotientOS
+# Quotient Mainframe OS
 
 A bootable ISO that turns a spare PC into a Quotient™ Mainframe. Write it to a USB stick, boot, answer four questions, claim from the Terminal app.
 
@@ -12,10 +12,10 @@ Plan and decisions: `docs/plans/2026-11-04-quotient-os.md` in the ecosystem repo
 
 ## Build
 
-On an Ubuntu 26.04 host with KVM (ep-ai):
+On Ubuntu 24.04 or 26.04 (ep-ai, or a GitHub runner):
 
 ```bash
-sudo ./build/build-iso.sh --channel stable        # out/quotientos-<version>-stable-amd64.iso
+sudo ./build/build-iso.sh --channel stable        # out/quotient-mainframe-os-<version>-stable-amd64.iso
 sudo ./build/build-iso.sh --channel dev           # what we test
 ```
 
@@ -41,7 +41,25 @@ sudo ./build/build-iso.sh --channel dev           # what we test
 
 Only one harness VM runs at a time on ep-ai (shared rule with the quotient-server install harness). O2 uses the host's own QEMU because LXD's build has no VNC; it needs `qemu-system-x86 ovmf vncsnapshot sshpass` and `pipx install vncdotool` on the host.
 
-Pull requests run `lint.yml` (ShellCheck, YAML, package lists, unit files). The ISO itself is built on ep-ai, not in CI.
+Pull requests run `lint.yml` (ShellCheck, YAML, package lists, unit files). Test ISOs are built on ep-ai; released ISOs by `release.yml`.
+
+## Release
+
+Run the **release** workflow (Actions → release → Run workflow) with the version (default: today's date) and the channel (default: stable). On a GitHub runner it builds the ISO (about 25 minutes), then `build/publish.sh`:
+
+1. writes `SHA256SUMS` and signs it with the Quotient APT key (`SHA256SUMS.gpg`, the key users already trust for packages);
+2. uploads the ISO and the checksum files to the website's Azure storage, container `os`, under `<version>/`, and writes `latest.json` (version, URL, size, sha256) that the website's download page reads: `https://stquotientwebprod.blob.core.windows.net/os/latest.json`. Only a stable build moves `latest.json`; other channels write `latest-<channel>.json`;
+3. creates the GitHub Release `v<version>` with the checksum files and the download URL (the ISO itself lives in Azure).
+
+Secrets: `GPG_PRIVATE_KEY` (the APT signing key, the same secret quotient-server CI holds), `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`. With `publish` off the workflow only builds and prints the checksum.
+
+Verify a download:
+
+```bash
+gpg --verify SHA256SUMS.gpg SHA256SUMS && sha256sum -c SHA256SUMS
+```
+
+The public ISO installs the **stable** channel, so promote quotient-server-tools before releasing an ISO that should carry a newer package; the installed Mainframe auto-updates from its channel either way.
 
 ## Layout
 
@@ -52,6 +70,7 @@ build/packages-live.txt     the live layer (never installed)
 build/rootfs/               overlay for the installed system (first boot, console, postinstall)
 build/live/                 overlay for the live layer (installer service, engine, Calamares config + branding)
 build/grub/                 ISO menu, its theme, and the EFI stub
+build/publish.sh            checksums, signature, Azure upload, latest.json, GitHub Release
 console/                    the tty1 status console (Go, built into the image)
 harness/                    os-harness.sh (on the LXD host), run-remote.sh, results/ (kept run logs)
 ```

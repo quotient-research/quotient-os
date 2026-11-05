@@ -54,7 +54,7 @@ ssh "$HOST" "(setsid nohup bash -c '
   if [ $BUILD != none ]; then
     sudo ./build/build-iso.sh $BUILD_FLAGS --channel $CHANNEL --out out > \$L/build.log 2>&1 || { echo BUILD FAILED >> \$L/run.log; exit 1; }
   fi
-  ISO=\$(ls -t out/quotientos-*-amd64.iso | head -1)
+  ISO=\$(ls -t out/quotient-mainframe-os-*-amd64.iso | head -1)
   ./harness/os-harness.sh run --iso \$ISO --scenarios $SCENARIOS --logs \$L $EXTRA
 ' > /dev/null 2>&1 </dev/null &)"
 echo "started on $HOST: logs $STAMP"

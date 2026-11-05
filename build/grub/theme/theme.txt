@@ -1,4 +1,4 @@
-# QuotientOS boot menu: ink background, the Q mark, Jost title, green selection.
+# Quotient Mainframe OS boot menu: ink background, the Q mark, Jost title, green selection.
 desktop-color: "#14201A"
 title-text: ""
 terminal-box: "terminal_*.png"

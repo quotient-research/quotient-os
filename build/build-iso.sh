@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build the QuotientOS ISO: a minimal Ubuntu LTS that installs itself as a
-# headless Quotient Mainframe. Run as root on an Ubuntu 26.04 host (ep-ai).
+# Build the Quotient Mainframe OS ISO: a minimal Ubuntu LTS that installs itself as a
+# headless Quotient Mainframe. Run as root on Ubuntu 24.04 or 26.04 (ep-ai, or
+# a GitHub runner through .github/workflows/release.yml).
 #
 #   sudo ./build-iso.sh [--channel stable|preview|dev] [--work DIR] [--out DIR]
 #                       [--no-seed] [--keep-chroot] [--version X.Y.Z]
@@ -52,7 +53,7 @@ done
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$HERE/../out}
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
-for t in debootstrap mksquashfs xorriso grub-mkimage mkfs.vfat mcopy snap; do
+for t in debootstrap mksquashfs xorriso grub-mkimage mkfs.vfat mcopy snap rsvg-convert unsquashfs; do
   command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 1; }
 done
 
@@ -126,7 +127,7 @@ fi
 if [ "$FROM_BOOT" = 1 ]; then
   [ -f "$ISO_DIR/live/20-live.squashfs" ] || die "no squashfs images at $ISO_DIR/live to reuse"
   read -r _ VERSION CHANNEL _ DEB_VERSION < <(tr -d '(),' < "$CHROOT/etc/quotient-os-release")
-  log "Reusing images (QuotientOS $VERSION, $CHANNEL, package $DEB_VERSION)"
+  log "Reusing images (Quotient Mainframe OS $VERSION, $CHANNEL, package $DEB_VERSION)"
 fi
 
 if [ "$REMASTER" = 0 ] && [ "$FROM_BOOT" = 0 ]; then
@@ -135,6 +136,10 @@ if [ -f "$CHROOT/.debootstrap-done" ] && [ "$KEEP_CHROOT" = 1 ]; then
   log "Reusing debootstrap chroot at $CHROOT"
 else
   log "debootstrap $SUITE into $CHROOT"
+  # A 24.04 host (GitHub's runners) has no script for 26.04 yet; every Ubuntu
+  # release script is the same symlink to gutsy.
+  SCRIPTS=/usr/share/debootstrap/scripts
+  [ -e "$SCRIPTS/$SUITE" ] || ln -s gutsy "$SCRIPTS/$SUITE"
   rm -rf "$CHROOT"; mkdir -p "$CHROOT"
   debootstrap --variant=minbase --arch=amd64 --components=main,restricted,universe \
     --cache-dir="$APT_CACHE" "$SUITE" "$CHROOT" "$MIRROR"
@@ -280,7 +285,7 @@ in_chroot "$CHROOT" systemctl enable NetworkManager ssh avahi-daemon quotient-os
 in_chroot "$CHROOT" apt-get clean
 rm -f "$CHROOT/etc/resolv.conf"; ln -s ../run/systemd/resolve/stub-resolv.conf "$CHROOT/etc/resolv.conf"
 rm -f "$CHROOT/etc/machine-id"; : > "$CHROOT/etc/machine-id"
-echo "QuotientOS $VERSION ($CHANNEL, quotient-server-tools $DEB_VERSION)" > "$CHROOT/etc/quotient-os-release"
+echo "Quotient Mainframe OS $VERSION ($CHANNEL, quotient-server-tools $DEB_VERSION)" > "$CHROOT/etc/quotient-os-release"
 leave_chroot "$CHROOT"
 
 log "Base squashfs"
@@ -360,7 +365,7 @@ cp "$SHIM" "$ISO_DIR/EFI/boot/bootx64.efi"
 cp "$GRUB_EFI" "$ISO_DIR/EFI/boot/grubx64.efi"
 mkdir -p "$ISO_DIR/EFI/ubuntu"; cp "$HERE/grub/grub-efi.cfg" "$ISO_DIR/EFI/ubuntu/grub.cfg"
 
-echo "QuotientOS $VERSION" > "$ISO_DIR/.disk/info"
+echo "Quotient Mainframe OS $VERSION" > "$ISO_DIR/.disk/info"
 printf 'version=%s\nchannel=%s\npackage=%s\nbuilt=%s\n' "$VERSION" "$CHANNEL" "$DEB_VERSION" "$STAMP" > "$ISO_DIR/.disk/quotient-os"
 
 fi # REMASTER
@@ -373,9 +378,9 @@ if [ -n "$ANSWERS" ]; then
   mkdir -p "$ISO_DIR/quotient"; cp "$ANSWERS" "$ISO_DIR/quotient/answers.conf"
   log "Unattended answers placed on the medium"
 fi
-ISO=${ISO_OUT:-$OUT/quotientos-$VERSION-$CHANNEL-amd64.iso}
+ISO=${ISO_OUT:-$OUT/quotient-mainframe-os-$VERSION-$CHANNEL-amd64.iso}
 log "ISO $ISO"
-xorriso -as mkisofs -quiet -r -V QUOTIENTOS -o "$ISO" \
+xorriso -as mkisofs -quiet -r -V QUOTIENT_MAINFRAME_OS -o "$ISO" \
   -J -joliet-long -l -iso-level 3 -partition_offset 16 \
   --grub2-mbr /usr/lib/grub/i386-pc/boot_hybrid.img --mbr-force-bootable \
   -append_partition 2 0xEF "$EFI_IMG" -appended_part_as_gpt \

@@ -28,7 +28,7 @@ Presentation {
     Band { eyebrow: "WHAT HAPPENS NEXT"; title: "Restart, then claim it from your phone."
            body: "When the files are in place the PC restarts and shows a code on its screen. Open the Terminal app, scan the code, and the Mainframe is yours." }
     Band { eyebrow: "NO ACCOUNTS, NO ADS"; title: "Nothing here talks to anyone but you."
-           body: "QuotientOS checks for Quotient and security updates. That is the whole list." }
+           body: "Your Mainframe checks for Quotient and security updates. That is the whole list." }
 
     function onActivate() { advanceTimer.running = true }
     function onLeave() { advanceTimer.running = false }

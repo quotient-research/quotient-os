@@ -1,4 +1,4 @@
-/* QuotientOS installer: the v2 theme (docs/design/THEME.md). Paper canvas,
+/* Quotient Mainframe OS installer: the v2 theme (docs/design/THEME.md). Paper canvas,
    ink text and 2px ink borders, one green accent, Jost for titles and
    buttons, IBM Plex Sans for body, Plex Mono for machine values. Hard shadows
    can't be drawn in QSS; buttons get the kit's 3px lip as a thicker bottom

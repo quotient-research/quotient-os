@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Unattended QuotientOS install from the live system. Reads an answers file
+# Unattended Quotient Mainframe OS install from the live system. Reads an answers file
 # (key=value) and installs the base squashfs to one disk, UEFI + BIOS.
 #
 #   disk=/dev/sda          the whole disk; erased
@@ -85,7 +85,7 @@ log "Bootloader (UEFI with Secure Boot, and BIOS)"
 ch grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot --removable --no-nvram >/dev/null 2>&1 || true
 ch grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --uefi-secure-boot >/dev/null 2>&1 || log "no EFI variables (BIOS boot?); removable path installed"
 ch grub-install --target=i386-pc "$disk" >/dev/null 2>&1 || log "BIOS grub-install skipped"
-ch sh -c 'sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/; s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"/" /etc/default/grub; grep -q GRUB_DISTRIBUTOR /etc/default/grub && sed -i "s/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR=QuotientOS/" /etc/default/grub'
+ch sh -c 'sed -i "s/^GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/; s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"quiet splash\"/" /etc/default/grub; grep -q GRUB_DISTRIBUTOR /etc/default/grub && sed -i "s/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR=\"Quotient Mainframe OS\"/" /etc/default/grub'
 # serial=1 (harness): kernel messages and a login on the serial port as well.
 [ "${serial:-0}" = 1 ] && ch sh -c 'sed -i "s/^GRUB_CMDLINE_LINUX=.*/GRUB_CMDLINE_LINUX=\"console=tty1 console=ttyS0,115200n8\"/" /etc/default/grub'
 ch update-initramfs -u -k all >/dev/null 2>&1

@@ -1,5 +1,5 @@
 [Unit]
-Description=QuotientOS installer (Calamares in cage, or unattended)
+Description=Quotient Mainframe OS installer (Calamares in cage, or unattended)
 Conflicts=getty@tty1.service
 After=systemd-user-sessions.service plymouth-quit-wait.service NetworkManager.service
 Wants=NetworkManager.service

@@ -10,7 +10,7 @@ set -euo pipefail
 mkdir -p /etc/quotient
 if [ ! -s /etc/quotient/install.conf ]; then
   cat > /etc/quotient/install.conf <<'EOF'
-# /etc/quotient/install.conf — written by the QuotientOS installer.
+# /etc/quotient/install.conf — written by the Quotient Mainframe OS installer.
 http_port=80
 samba=off
 firewall=auto

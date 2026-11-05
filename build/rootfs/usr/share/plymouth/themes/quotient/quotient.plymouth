@@ -1,6 +1,6 @@
 [Plymouth Theme]
 Name=Quotient
-Description=QuotientOS boot splash: the Q mark on ink
+Description=Quotient Mainframe OS boot splash: the Q mark on ink
 ModuleName=script
 
 [script]
