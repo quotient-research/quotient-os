@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish a built ISO: checksums, a GPG signature with the Quotient APT key,
-# the files in the website's Azure storage (container "os"), latest.json for
+# the files in the website's Azure storage (container "mainframe-os"), latest.json for
 # the download page, and a GitHub Release carrying the checksum files.
 #
 #   ./publish.sh --iso out/quotient-mainframe-os-2026.11.04-stable-amd64.iso \
@@ -12,7 +12,7 @@
 set -euo pipefail
 ISO=""; ACCOUNT=${AZURE_STORAGE_ACCOUNT:-stquotientwebprod}; KEY=${AZURE_STORAGE_KEY:-}
 SIGN=1; UPLOAD=1; RELEASE=1; REPO=${GITHUB_REPOSITORY:-quotient-research/quotient-os}
-CONTAINER=os
+CONTAINER=mainframe-os   # Azure needs 3-63 characters
 REPO_KEY_FPR=AE772CBCB3BC29B247A794256781AAC9BFEA7E51
 while [ $# -gt 0 ]; do
   case "$1" in

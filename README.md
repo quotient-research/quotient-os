@@ -48,7 +48,7 @@ Pull requests run `lint.yml` (ShellCheck, YAML, package lists, unit files). Test
 Run the **release** workflow (Actions → release → Run workflow) with the version (default: today's date) and the channel (default: stable). On a GitHub runner it builds the ISO (about 25 minutes), then `build/publish.sh`:
 
 1. writes `SHA256SUMS` and signs it with the Quotient APT key (`SHA256SUMS.gpg`, the key users already trust for packages);
-2. uploads the ISO and the checksum files to the website's Azure storage, container `os`, under `<version>/`, and writes `latest.json` (version, URL, size, sha256) that the website's download page reads: `https://stquotientwebprod.blob.core.windows.net/os/latest.json`. Only a stable build moves `latest.json`; other channels write `latest-<channel>.json`;
+2. uploads the ISO and the checksum files to the website's Azure storage, container `mainframe-os`, under `<version>/`, and writes `latest.json` (version, URL, size, sha256) that the website's download page reads: `https://stquotientwebprod.blob.core.windows.net/mainframe-os/latest.json`. Only a stable build moves `latest.json`; other channels write `latest-<channel>.json`;
 3. creates the GitHub Release `v<version>` with the checksum files and the download URL (the ISO itself lives in Azure).
 
 Secrets: `GPG_PRIVATE_KEY` (the APT signing key, the same secret quotient-server CI holds), `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`. With `publish` off the workflow only builds and prints the checksum.

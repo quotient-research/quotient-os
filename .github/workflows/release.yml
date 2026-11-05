@@ -1,7 +1,7 @@
 name: release
 # Builds the Quotient Mainframe OS ISO on a GitHub runner and publishes it:
 # sha256 checksums signed with the Quotient APT key, the files in the website's
-# Azure storage (container "os", read by the download page through latest.json),
+# Azure storage (container "mainframe-os", read by the download page through latest.json),
 # and a GitHub Release with the checksum files. About 25 minutes.
 #
 # Secrets: GPG_PRIVATE_KEY (the APT signing key, as in quotient-server),
