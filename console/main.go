@@ -2,11 +2,17 @@
 // window, the name, address and health of this Mainframe and, until it is
 // claimed, the setup link as a QR code for the Terminal app. Any key opens a
 // normal login. Standard library only; the QR code comes from qrencode.
+//
+// Run as root it also writes what it shows to /run/quotient-os/screen.json,
+// which the screen kiosk reads (the kiosk user cannot ask for the setup code).
+// --no-login is the kiosk's fallback when the graphical screen cannot start:
+// the same window, and keys do nothing.
 package main
 
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,7 +35,10 @@ const (
 
 var linkRe = regexp.MustCompile(`https?://[^\s"']+`)
 
+var noLogin bool
+
 func main() {
+	noLogin = len(os.Args) > 1 && os.Args[1] == "--no-login"
 	stty("raw", "-echo")
 	defer stty("sane")
 	keys := make(chan struct{}, 1)
@@ -47,6 +56,9 @@ func main() {
 		draw()
 		select {
 		case <-keys:
+			if noLogin {
+				continue
+			}
 			stty("sane")
 			fmt.Print("\033[2J\033[H")
 			if err := syscall.Exec("/bin/login", []string{"login"}, os.Environ()); err != nil {
@@ -84,7 +96,8 @@ func collect() state {
 	if out, err := exec.Command("ip", "-4", "-o", "addr", "show", "scope", "global").Output(); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			f := strings.Fields(line)
-			if len(f) >= 4 {
+			// Pod networking (Calico's vxlan, cali*, cni*) is not an address anyone can reach.
+			if len(f) >= 4 && !strings.HasPrefix(f[1], "vxlan") && !strings.HasPrefix(f[1], "cali") && !strings.HasPrefix(f[1], "cni") && !strings.HasPrefix(f[1], "flannel") {
 				s.addrs = append(s.addrs, strings.Split(f[3], "/")[0]+"  ("+f[1]+")")
 			}
 		}
@@ -113,7 +126,51 @@ func collect() state {
 			}
 		}
 	}
+	writeScreenState(s)
 	return s
+}
+
+// writeScreenState hands the kiosk what this console shows. Only root can
+// (the directory is root's); anyone else skips it.
+func writeScreenState(s state) {
+	if os.Geteuid() != 0 {
+		return
+	}
+	const dir = "/run/quotient-os"
+	b, err := json.Marshal(map[string]any{
+		"name": s.name, "version": s.version, "health": s.health,
+		"healthy": s.health == "healthy", "link": s.link, "addresses": s.addrs,
+	})
+	if err != nil {
+		return
+	}
+	tmp := dir + "/.screen.json"
+	if err := os.WriteFile(tmp, b, 0o640); err != nil {
+		return
+	}
+	// Readable by the kiosk user's group only: it carries the setup code.
+	if g, err := lookupGroup("quotient-kiosk"); err == nil {
+		_ = os.Chown(tmp, 0, g)
+	}
+	_ = os.Rename(tmp, dir+"/screen.json")
+}
+
+// lookupGroup reads /etc/group (os/user needs cgo for NSS; plain files do).
+func lookupGroup(name string) (int, error) {
+	b, err := os.ReadFile("/etc/group")
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		f := strings.Split(line, ":")
+		if len(f) >= 3 && f[0] == name {
+			var gid int
+			if _, err := fmt.Sscanf(f[2], "%d", &gid); err == nil {
+				return gid, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("no group %s", name)
 }
 
 func draw() {
@@ -156,7 +213,11 @@ func draw() {
 	default:
 		b.WriteString("  The setup code appears here when the Mainframe is ready.\n")
 	}
-	b.WriteString("\n  " + dim + s.version + " · press any key to sign in" + reset + "\n")
+	hint := " · press any key to sign in"
+	if noLogin {
+		hint = " · the console on Ctrl+Alt+F1 has a login"
+	}
+	b.WriteString("\n  " + dim + s.version + hint + reset + "\n")
 	fmt.Print(strings.ReplaceAll(b.String(), "\n", "\r\n"))
 }
 

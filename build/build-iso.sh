@@ -8,7 +8,8 @@
 #
 # Layout of the result (hybrid BIOS + UEFI ISO, Secure Boot capable because
 # only Ubuntu's signed shim, GRUB and kernel are used):
-#   /live/10-base.squashfs   the installed system (what the installer unpacks)
+#   /live/10-base.squashfs   the installed system (what the installer unpacks):
+#                            headless Mainframe plus the screen kiosk (greetd)
 #   /live/20-live.squashfs   the live-only layer (live-boot, Calamares, cage)
 #   /live/vmlinuz, /live/initrd.img
 #   /boot/grub/grub.cfg      BIOS + UEFI menu
@@ -278,10 +279,29 @@ else
   cp "$CHROOT/usr/lib/quotient-os/console.sh" "$CHROOT/usr/lib/quotient-os/console"
 fi
 chmod +x "$CHROOT"/usr/lib/quotient-os/*
+
+log "The screen: kiosk account, greetd, the mark, no sleep"
+# greetd runs the kiosk (its greeter) as this account: locked password, no SSH
+# (sshd_config.d), a home only for GTK's and WebKit's caches. A fixed uid that
+# no container image uses: the Mainframe's pods run as 999 (Postgres, Calico),
+# and a host account with the same uid would own their files on host volumes.
+KIOSK_UID=59000
+in_chroot "$CHROOT" sh -c "
+  if id quotient-kiosk >/dev/null 2>&1; then
+    [ \$(id -u quotient-kiosk) = $KIOSK_UID ] || { usermod -u $KIOSK_UID quotient-kiosk && groupmod -g $KIOSK_UID quotient-kiosk && chown -R quotient-kiosk:quotient-kiosk /var/lib/quotient-kiosk; }
+  else
+    groupadd --system --gid $KIOSK_UID quotient-kiosk
+    useradd --system --uid $KIOSK_UID --gid $KIOSK_UID --create-home --home-dir /var/lib/quotient-kiosk --shell /bin/sh quotient-kiosk
+  fi"
+in_chroot "$CHROOT" sh -c 'for g in video render; do getent group $g >/dev/null && usermod -aG $g quotient-kiosk; done; true'
+mkdir -p "$CHROOT/usr/share/quotient-os"
+rsvg-convert -w 56 -h 56 "$HERE/live/etc/calamares/branding/quotient/quotient-mark.svg" -o "$CHROOT/usr/share/quotient-os/quotient-mark-56.png"
+# A Mainframe never sleeps (logind.conf.d covers idle, lid and keys).
+in_chroot "$CHROOT" systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target >/dev/null 2>&1
 # Nothing phones home but Quotient and Ubuntu security updates.
 in_chroot "$CHROOT" sh -c 'systemctl mask motd-news.timer motd-news.service >/dev/null 2>&1 || true'
 rm -f "$CHROOT"/etc/update-motd.d/50-motd-news "$CHROOT"/etc/update-motd.d/10-help-text "$CHROOT"/etc/update-motd.d/90-updates-available 2>/dev/null || true
-in_chroot "$CHROOT" systemctl enable NetworkManager ssh avahi-daemon quotient-os-firstboot quotient-console >/dev/null 2>&1 || true
+in_chroot "$CHROOT" systemctl enable NetworkManager ssh avahi-daemon quotient-os-firstboot quotient-console greetd apparmor >/dev/null 2>&1 || true
 in_chroot "$CHROOT" apt-get clean
 rm -f "$CHROOT/etc/resolv.conf"; ln -s ../run/systemd/resolve/stub-resolv.conf "$CHROOT/etc/resolv.conf"
 rm -f "$CHROOT/etc/machine-id"; : > "$CHROOT/etc/machine-id"
@@ -309,7 +329,7 @@ BR=$MERGED/etc/calamares/branding/quotient
 rsvg-convert -w 64 -h 64 "$BR/quotient-mark.svg" -o "$BR/quotient-mark-64.png"
 rsvg-convert -w 160 -h 160 "$BR/quotient-mark.svg" -o "$BR/quotient-mark-160.png"
 in_chroot "$MERGED" systemctl enable quotient-installer serial-getty@ttyS0 >/dev/null 2>&1 || true
-in_chroot "$MERGED" systemctl disable quotient-os-firstboot quotient-console ssh >/dev/null 2>&1 || true
+in_chroot "$MERGED" systemctl disable quotient-os-firstboot quotient-console ssh greetd >/dev/null 2>&1 || true
 in_chroot "$MERGED" sh -c 'update-initramfs -u -k all >/dev/null 2>&1'
 in_chroot "$MERGED" apt-get clean
 KERNEL=$(ls "$MERGED"/boot/vmlinuz-* | sort -V | tail -1)

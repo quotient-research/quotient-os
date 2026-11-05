@@ -1,0 +1,452 @@
+#!/usr/bin/python3
+"""The Mainframe's screen: the Quotient web app, full screen, in a locked-down view.
+
+Runs as greetd's greeter (user quotient-kiosk) inside cage, from kiosk-session.
+A title bar carries the Mainframe's name and a Desktop button (or Ctrl+Alt+D).
+Desktop asks for the owner's password and starts a desktop session through
+greetd; logging out of that session brings this screen back.
+
+  kiosk                   the screen (greeter mode, needs GREETD_SOCK)
+  kiosk --install-desktop the first-use desktop install, run in the owner's
+                          session by desktop-session; exits 0 when installed
+
+Only http://localhost is reachable; there is no context menu, no developer
+tools, no new windows. Web storage persists (in the kiosk account's home): a
+Quotient ID made here with "I'm new to Quotient" lives in it, and losing it
+would lock the owner out.
+"""
+import grp
+import json
+import pwd
+import time
+import os
+import socket
+import struct
+import subprocess
+import sys
+import threading
+from urllib.parse import urlparse, urlunparse
+
+import gi
+
+gi.require_version("Gdk", "4.0")
+gi.require_version("Gtk", "4.0")
+gi.require_version("WebKit", "6.0")
+from gi.repository import Gdk, Gio, GLib, Gtk, WebKit  # noqa: E402
+
+HOME_URL = "http://localhost/"
+SCREEN_STATE = "/run/quotient-os/screen.json"
+INSTALL_STATE = "/run/quotient-os/desktop-install.json"
+DESKTOP_MARK = "/var/lib/quotient-os/desktop-installed"
+DESKTOP_SESSION = "/usr/lib/quotient-os/desktop-session"
+MARK_PNG = "/usr/share/quotient-os/quotient-mark-56.png"  # made from the SVG at build time
+ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+CSS = """
+window { background: #faf9f5; color: #14201b; font-family: "IBM Plex Sans"; }
+.titlebar { background: #2ecc87; border-bottom: 2px solid #14201b; padding: 8px 16px; }
+.titlebar-label { font-family: "IBM Plex Mono"; font-weight: 500; font-size: 13px;
+                  letter-spacing: 3px; color: #14201b; }
+button.q { background: #ffffff; color: #14201b; border: 2px solid #14201b; border-radius: 10px;
+           padding: 6px 16px; font-weight: 600; box-shadow: 0 3px 0 #14201b; }
+button.q:hover { background: #f1efe7; }
+button.q.primary { background: #2ecc87; }
+button.q.primary:disabled { background: #cfeee0; color: #5b6660; }
+.panel { background: #ffffff; border: 2px solid #14201b; border-radius: 14px;
+         box-shadow: 0 6px 0 #14201b; padding: 32px; }
+.eyebrow { font-family: "IBM Plex Mono"; font-size: 12px; letter-spacing: 3px; color: #1f9e64; }
+.title { font-family: "Jost"; font-weight: 700; font-size: 30px; }
+.body { font-size: 16px; color: #3d4842; }
+.muted { color: #5b6660; font-size: 14px; }
+.error { color: #b3261e; font-size: 15px; }
+entry { min-height: 40px; border: 2px solid #14201b; border-radius: 10px; padding: 0 12px;
+        background: #ffffff; font-size: 16px; }
+progressbar trough { min-height: 14px; border: 2px solid #14201b; border-radius: 8px; background: #f1efe7; }
+progressbar progress { min-height: 14px; border-radius: 6px; background: #2ecc87; }
+"""
+
+
+def read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def on_localhost(link):
+    """The setup link names the Mainframe on the LAN (http://NAME.local/setup?code=...).
+    The screen is the Mainframe: open the same page on localhost, which the
+    navigation policy allows and browsers treat as a secure context."""
+    u = urlparse(link)
+    return urlunparse(("http", "localhost", u.path or "/", "", u.query, ""))
+
+
+def owner_name():
+    """The account made in the installer: the lowest-uid member of sudo."""
+    try:
+        members = grp.getgrnam("sudo").gr_mem
+    except KeyError:
+        return ""
+    users = []
+    for m in members:
+        try:
+            users.append((pwd.getpwnam(m).pw_uid, m))
+        except KeyError:
+            pass
+    return min(users)[1] if users else ""
+
+
+def titlebar(right=None):
+    bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+    bar.add_css_class("titlebar")
+    if os.path.exists(MARK_PNG):
+        mark = Gtk.Image.new_from_file(MARK_PNG)
+        mark.set_pixel_size(28)
+        bar.append(mark)
+    name = (read_json(SCREEN_STATE).get("name") or socket.gethostname()).upper()
+    label = Gtk.Label(label=f"QUOTIENT MAINFRAME · {name}", xalign=0, hexpand=True)
+    label.add_css_class("titlebar-label")
+    bar.append(label)
+    if right is not None:
+        right.set_valign(Gtk.Align.CENTER)
+        bar.append(right)
+    return bar
+
+
+def label(text, cls, wrap=True):
+    lbl = Gtk.Label(label=text, xalign=0, wrap=wrap)
+    lbl.set_max_width_chars(60)
+    lbl.add_css_class(cls)
+    return lbl
+
+
+def button(text, primary=False):
+    b = Gtk.Button(label=text)
+    b.add_css_class("q")
+    if primary:
+        b.add_css_class("primary")
+    return b
+
+
+def centered(child):
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER,
+                  halign=Gtk.Align.CENTER, vexpand=True, hexpand=True)
+    box.append(child)
+    return box
+
+
+class Greetd:
+    """greetd's IPC: 32-bit native length, then JSON (greetd-ipc(7))."""
+
+    def __init__(self, path):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(path)
+
+    def request(self, msg):
+        data = json.dumps(msg).encode()
+        self.sock.sendall(struct.pack("=I", len(data)) + data)
+        (n,) = struct.unpack("=I", self._recv(4))
+        return json.loads(self._recv(n))
+
+    def _recv(self, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("greetd closed the connection")
+            buf += chunk
+        return buf
+
+    def login(self, user, password, cmd):
+        """Authenticate and start cmd as user. Returns None or an error message."""
+        reply = self.request({"type": "create_session", "username": user})
+        notes = []
+        while reply.get("type") == "auth_message":
+            kind = reply.get("auth_message_type")
+            if kind == "secret":
+                answer = password
+            elif kind == "visible":
+                answer = user
+            else:
+                notes.append(reply.get("auth_message", "").strip())
+                answer = None
+            reply = self.request({"type": "post_auth_message_response", "response": answer})
+        if reply.get("type") == "success":
+            reply = self.request({"type": "start_session", "cmd": cmd, "env": []})
+            if reply.get("type") == "success":
+                return None
+        self.request({"type": "cancel_session"})
+        if reply.get("error_type") == "auth_error":
+            return "That password didn't work. Try again."
+        return " ".join([n for n in notes if n] + [reply.get("description", "Sign-in failed.")])
+
+
+class Kiosk(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id="com.quotient.Kiosk", flags=Gio.ApplicationFlags.NON_UNIQUE)
+        self.loaded = None  # what the web view was last pointed at: "link" or "home"
+
+    def do_activate(self):
+        win = Gtk.ApplicationWindow(application=self, decorated=False)
+        self.win = win
+        self.desktop_btn = desktop = button("Desktop")
+        desktop.set_tooltip_text("Use this computer's desktop (Ctrl+Alt+D)")
+        desktop.connect("clicked", lambda *_: self.show_signin())
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.append(titlebar(desktop))
+        self.stack = Gtk.Stack(vexpand=True, transition_type=Gtk.StackTransitionType.CROSSFADE)
+        outer.append(self.stack)
+        win.set_child(outer)
+
+        self.stack.add_named(self.build_web(), "web")
+        self.stack.add_named(self.build_waiting(), "waiting")
+        self.stack.add_named(self.build_signin(), "signin")
+        self.stack.set_visible_child_name("waiting")
+
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self.on_key)
+        win.add_controller(keys)
+        win.present()
+        self.refresh()
+        GLib.timeout_add_seconds(5, self.refresh)
+
+    # --- the web app -------------------------------------------------------
+    def build_web(self):
+        self.web = WebKit.WebView(network_session=WebKit.NetworkSession.get_default(),
+                                  vexpand=True, hexpand=True)
+        s = self.web.get_settings()
+        s.set_enable_developer_extras(False)
+        s.set_javascript_can_open_windows_automatically(False)
+        self.web.connect("decide-policy", self.on_policy)
+        self.web.connect("context-menu", lambda *_: True)
+        self.web.connect("create", lambda *_: None)
+        self.web.connect("load-failed", self.on_load_failed)
+        return self.web
+
+    def on_policy(self, _view, decision, kind):
+        if kind in (WebKit.PolicyDecisionType.NAVIGATION_ACTION,
+                    WebKit.PolicyDecisionType.NEW_WINDOW_ACTION):
+            uri = decision.get_navigation_action().get_request().get_uri()
+            u = urlparse(uri)
+            ok = u.scheme in ("about", "data", "blob") or (
+                u.scheme in ("http", "https") and u.hostname in ALLOWED_HOSTS)
+            if not ok or kind == WebKit.PolicyDecisionType.NEW_WINDOW_ACTION:
+                decision.ignore()
+                return True
+        return False
+
+    def on_load_failed(self, *_):
+        self.loaded = None  # try again on the next refresh
+        self.stack.set_visible_child_name("waiting")
+        return True
+
+    # --- while the Mainframe starts ----------------------------------------
+    def build_waiting(self):
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        panel.add_css_class("panel")
+        panel.set_size_request(560, -1)
+        panel.append(label("GETTING READY", "eyebrow"))
+        panel.append(label("Your Mainframe is starting.", "title"))
+        self.wait_status = label("", "body")
+        self.wait_addr = label("", "muted")
+        panel.append(self.wait_status)
+        panel.append(self.wait_addr)
+        panel.append(label("The first start installs the Mainframe software and takes about 10 minutes. "
+                           "This screen changes on its own when it's ready.", "muted"))
+        return centered(panel)
+
+    def refresh(self):
+        st = read_json(SCREEN_STATE)
+        addrs = st.get("addresses") or []
+        self.wait_status.set_text("Status: " + (st.get("health") or "starting"))
+        self.wait_addr.set_text("Address: " + (addrs[0] if addrs else "waiting for the network"))
+        if self.stack.get_visible_child_name() == "signin":
+            return True
+        if not st.get("healthy"):
+            self.stack.set_visible_child_name("waiting")
+            self.loaded = None
+            return True
+        # Unclaimed: the setup link opens the web app's own claim page (its
+        # "use your phone" step shows the QR code). Once claimed, the home page.
+        want = "link" if st.get("link") else "home"
+        if self.loaded is None or (want == "link" and self.loaded != "link"):
+            self.web.load_uri(on_localhost(st["link"]) if want == "link" else HOME_URL)
+            self.loaded = want
+        self.stack.set_visible_child_name("web")
+        return True
+
+    # --- Desktop: sign in as the owner -------------------------------------
+    def build_signin(self):
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        panel.add_css_class("panel")
+        panel.set_size_request(560, -1)
+        panel.append(label("DESKTOP", "eyebrow"))
+        panel.append(label("Use this computer's desktop", "title"))
+        panel.append(label("Sign in with the account you made when you installed the Mainframe. "
+                           "The Mainframe keeps running while you use the desktop.", "body"))
+        if not os.path.exists(DESKTOP_MARK):
+            panel.append(label("The first time, the desktop downloads (about 70 MB) and installs, which "
+                               "takes a few minutes and needs internet. Firefox follows on its own.", "muted"))
+        self.user = Gtk.Entry(text=owner_name(), placeholder_text="Account name")
+        self.password = Gtk.PasswordEntry(show_peek_icon=True)
+        self.password.set_property("placeholder-text", "Password")
+        self.password.connect("activate", lambda *_: self.do_signin())
+        panel.append(label("Account", "muted", wrap=False))
+        panel.append(self.user)
+        panel.append(label("Password", "muted", wrap=False))
+        panel.append(self.password)
+        self.signin_error = label("", "error")
+        panel.append(self.signin_error)
+        row = Gtk.Box(spacing=12, halign=Gtk.Align.END)
+        back = button("Back")
+        back.connect("clicked", lambda *_: self.leave_signin())
+        self.signin_btn = button("Sign in", primary=True)
+        self.signin_btn.connect("clicked", lambda *_: self.do_signin())
+        row.append(back)
+        row.append(self.signin_btn)
+        panel.append(row)
+        return centered(panel)
+
+    def show_signin(self):
+        self.desktop_btn.set_visible(False)
+        self.signin_error.set_text("")
+        self.password.set_text("")
+        self.stack.set_visible_child_name("signin")
+        (self.password if self.user.get_text() else self.user).grab_focus()
+
+    def leave_signin(self):
+        self.desktop_btn.set_visible(True)
+        self.stack.set_visible_child_name("web" if self.loaded else "waiting")
+        self.refresh()
+
+    def on_key(self, _ctl, keyval, _code, state):
+        mods = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
+        if (state & mods) == mods and keyval in (Gdk.KEY_d, Gdk.KEY_D):
+            self.show_signin()
+            return True
+        if keyval == Gdk.KEY_Escape and self.stack.get_visible_child_name() == "signin":
+            self.leave_signin()
+            return True
+        return False
+
+    def do_signin(self):
+        user, pw = self.user.get_text().strip(), self.password.get_text()
+        if not user or not pw:
+            self.signin_error.set_text("Enter the account name and its password.")
+            return
+        sock = os.environ.get("GREETD_SOCK")
+        if not sock:
+            self.signin_error.set_text("Sign-in isn't available here (no greetd).")
+            return
+        self.signin_btn.set_sensitive(False)
+        self.signin_error.set_text("")
+
+        def work():
+            try:
+                err = Greetd(sock).login(user, pw, [DESKTOP_SESSION])
+            except (OSError, ConnectionError, ValueError) as e:
+                err = f"Sign-in failed: {e}"
+            GLib.idle_add(self.signin_done, err)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def signin_done(self, err):
+        if err is None:
+            # kiosk-session sees this and lets greetd start the desktop session.
+            run = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+            with open(os.path.join(run, "quotient-kiosk-session-started"), "w") as f:
+                f.write("1")
+            self.quit()
+            return False
+        self.signin_btn.set_sensitive(True)
+        self.password.set_text("")
+        self.signin_error.set_text(err)
+        self.password.grab_focus()
+        return False
+
+
+class Installer(Gtk.Application):
+    """Runs in the owner's session: installs the desktop, then exits 0."""
+
+    def __init__(self):
+        super().__init__(application_id="com.quotient.DesktopInstall", flags=Gio.ApplicationFlags.NON_UNIQUE)
+        self.result = 1
+
+    def do_activate(self):
+        win = Gtk.ApplicationWindow(application=self, decorated=False)
+        panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        panel.add_css_class("panel")
+        panel.set_size_request(600, -1)
+        panel.append(label("DESKTOP", "eyebrow"))
+        self.title = label("Installing the desktop", "title")
+        panel.append(self.title)
+        self.message = label("Getting ready", "body")
+        panel.append(self.message)
+        self.bar = Gtk.ProgressBar()
+        panel.append(self.bar)
+        panel.append(label("This happens once. The Mainframe keeps running while it installs.", "muted"))
+        row = Gtk.Box(spacing=12, halign=Gtk.Align.END)
+        self.back = button("Back to the Mainframe")
+        self.back.connect("clicked", lambda *_: self.quit())
+        self.back.set_visible(False)
+        row.append(self.back)
+        panel.append(row)
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        outer.append(titlebar())
+        outer.append(centered(panel))
+        win.set_child(outer)
+        win.present()
+        try:
+            os.unlink(INSTALL_STATE)
+        except OSError:
+            pass
+        started = subprocess.run(["systemctl", "start", "--no-block", "quotient-desktop-install.service"],
+                                 capture_output=True, text=True)
+        if started.returncode != 0:
+            self.fail("Couldn't start the install: " + (started.stderr.strip() or "permission denied"))
+            return
+        self.started = time.monotonic()
+        GLib.timeout_add(700, self.poll)
+
+    def poll(self):
+        st = read_json(INSTALL_STATE)
+        if not st and time.monotonic() - self.started > 20:
+            unit = subprocess.run(["systemctl", "is-failed", "quotient-desktop-install.service"],
+                                  capture_output=True, text=True).stdout.strip()
+            if unit == "failed":
+                self.fail("The install stopped before it began (details in /var/log/quotient-desktop-install.log).")
+                return False
+        self.bar.set_fraction(min(max(float(st.get("percent", 0)), 0), 100) / 100)
+        if st.get("message"):
+            self.message.set_text(st["message"])
+        if st.get("state") == "done" or os.path.exists(DESKTOP_MARK):
+            self.result = 0
+            self.quit()
+            return False
+        if st.get("state") == "failed":
+            self.fail(st.get("message") or "The install stopped.")
+            return False
+        return True
+
+    def fail(self, msg):
+        self.title.set_text("The desktop didn't install")
+        self.message.set_text(msg + " Nothing on the Mainframe changed. You can try again from the Desktop button.")
+        self.back.set_visible(True)
+
+
+def main():
+    provider = Gtk.CssProvider()
+    provider.load_from_string(CSS) if hasattr(provider, "load_from_string") else provider.load_from_data(CSS.encode())
+    Gtk.init()
+    Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider,
+                                              Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    if "--install-desktop" in sys.argv[1:]:
+        app = Installer()
+        app.run([sys.argv[0]])
+        return app.result
+    return Kiosk().run([sys.argv[0]])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

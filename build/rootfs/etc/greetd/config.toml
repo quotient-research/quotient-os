@@ -1,0 +1,9 @@
+# The Mainframe's screen. greetd runs the kiosk as its greeter on VT 7 (the
+# status console stays on VT 1: Ctrl+Alt+F1). The kiosk's Desktop button signs
+# the owner in through greetd; when that session ends greetd runs the kiosk again.
+[terminal]
+vt = 7
+
+[default_session]
+command = "/usr/lib/quotient-os/kiosk-session"
+user = "quotient-kiosk"

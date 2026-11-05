@@ -61,3 +61,16 @@ unattended-upgrades
 apt-utils
 # Status console
 qrencode
+# The screen: the web app in a kiosk (greetd + cage + a WebKitGTK view). The
+# desktop itself is installed on first use (usr/share/quotient-os/desktop-packages.txt).
+greetd
+cage
+python3
+python3-gi
+gir1.2-gtk-4.0
+gir1.2-webkit-6.0
+fonts-ibm-plex
+dbus-user-session
+polkitd
+apparmor
+xkb-data

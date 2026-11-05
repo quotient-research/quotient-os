@@ -1,0 +1,11 @@
+# The kiosk's web view sandboxes its pages with bubblewrap, which needs an
+# unprivileged user namespace; Ubuntu allows that per program. Same shape as
+# Ubuntu's own profile for GNOME Web (epiphany).
+abi <abi/5.0>,
+include <tunables/global>
+
+profile quotient-kiosk /usr/lib/quotient-os/kiosk flags=(unconfined) {
+  userns,
+
+  include if exists <local/quotient-kiosk>
+}
