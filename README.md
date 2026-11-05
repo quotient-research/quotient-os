@@ -1,4 +1,4 @@
-# QuotientOS
+# Quotient Mainframe OS
 
 A bootable ISO that turns a spare PC into a Quotient™ Mainframe. Write it to a USB stick, boot, answer four questions, claim from the Terminal app.
 
@@ -8,14 +8,33 @@ Plan and decisions: `docs/plans/2026-11-04-quotient-os.md` in the ecosystem repo
 
 - **Base:** Ubuntu 26.04 LTS, minimal, built with `debootstrap`. Ubuntu's signed shim, GRUB and kernel, so Secure Boot works unchanged.
 - **Installer:** Calamares, full screen in `cage`. The Quotient-specific work (`build/rootfs/usr/lib/quotient-os/postinstall.sh`) is one script shared with the unattended install the harness uses.
-- **Installed system:** headless. NetworkManager, Avahi, SSH (owner account), ufw on, the MicroK8s snap seeded, `quotient-server-tools` bundled and installed on first boot with `/etc/quotient/install.conf` already written. A status console on tty1 shows the name, address, health and the setup link as a QR code.
+- **Installed system:** an appliance. NetworkManager, Avahi, SSH (owner account), ufw on, the MicroK8s snap seeded, `quotient-server-tools` bundled and installed on first boot with `/etc/quotient/install.conf` already written. Sleep is off for good (masked targets, logind ignores idle, lid and keys).
+- **The screen:** a kiosk showing the Mainframe web app (see below). A text status console on tty1 (Ctrl+Alt+F1) shows the name, address, health and the setup link as a QR code, with a login.
+
+## The screen
+
+```
+boot ─▶ greetd (VT 7) ─▶ kiosk-session ─▶ cage ─▶ kiosk (WebKitGTK, user quotient-kiosk)
+                                                  │  waiting page until /api/health is 200
+                                                  │  then the setup link (unclaimed) or http://localhost/
+                                                  └─ Desktop button / Ctrl+Alt+D ─▶ owner password (greetd PAM)
+                                                         └─▶ desktop-session (as the owner)
+                                                               first time: install screen ─▶ quotient-desktop-install.service
+                                                               then: LXQt on labwc ─ log out ─▶ greetd ─▶ kiosk
+```
+
+- **Account:** `quotient-kiosk`, uid 59000. Not 999: the Mainframe's pods run as 999 (Postgres, Calico), and a host account with that uid would own their files.
+- **Kiosk** (`usr/lib/quotient-os/kiosk`, Python + GTK 4 + WebKitGTK): only `localhost` is reachable (the setup link is opened on `localhost`, not the `.local` name), no context menu, developer tools or new windows. Web storage persists in `/var/lib/quotient-kiosk`: a Quotient ID made on the screen ("I'm new to Quotient") lives there, so the screen stays signed in like any home browser. It reads `/run/quotient-os/screen.json`, which the root status console writes (0640, group `quotient-kiosk`: it carries the setup code).
+- **Desktop on first use:** the packages in `usr/share/quotient-os/desktop-packages.txt` (LXQt, labwc, a terminal, an editor; Firefox from the Snap Store, optional) install from the archive the first time the owner asks (about 70 MB to download, 250 MB on disk); Firefox follows from the Snap Store in the background and never holds up the desktop. A polkit rule lets a local, active member of `sudo` start only that unit. Signing in to the desktop needs the owner's password; the kiosk account has none and no SSH. `desktop-session` gives the owner a first panel (the menu, Back to the Mainframe, Files, Terminal, Firefox; no volume applet, since a Mainframe has no sound server) and keeps any later change. Keep `qt6-svg-plugins` in the list: the theme's menu button is an SVG and is blank without it.
+- **If the graphics can't start** (three fast crashes), `kiosk-session` shows the text status on VT 7 instead.
+- **AppArmor:** Ubuntu restricts unprivileged user namespaces; `etc/apparmor.d/quotient-kiosk` grants one to the kiosk for WebKit's bubblewrap sandbox, as Ubuntu does for GNOME Web.
 
 ## Build
 
-On an Ubuntu 26.04 host with KVM (ep-ai):
+On Ubuntu 24.04 or 26.04 (ep-ai, or a GitHub runner):
 
 ```bash
-sudo ./build/build-iso.sh --channel stable        # out/quotientos-<version>-stable-amd64.iso
+sudo ./build/build-iso.sh --channel stable        # out/quotient-mainframe-os-<version>-stable-amd64.iso
 sudo ./build/build-iso.sh --channel dev           # what we test
 ```
 
@@ -24,16 +43,42 @@ sudo ./build/build-iso.sh --channel dev           # what we test
 ## Test
 
 ```bash
-./harness/run-remote.sh --channel dev --scenarios O1      # build + O1 on ep-ai, detached
-./harness/run-remote.sh --attach <stamp>
+./harness/run-remote.sh --channel dev --scenarios O1,O3            # full build + O1, O3 on ep-ai, detached
+./harness/run-remote.sh --build keep-chroot --scenarios O2         # package/overlay change, then the GUI run
+./harness/run-remote.sh --build none --scenarios O1                # the last ISO again
+./harness/run-remote.sh --attach <stamp>                           # follow
+./harness/run-remote.sh --collect <stamp>                          # logs and O2 screenshots → harness/logs/<stamp>/
 ```
+
+`--build keep-chroot` reuses the debootstrap chroot (about 8 minutes); `from-boot` reuses the squashfs images (GRUB, EFI and answers only, about 2 minutes).
 
 | | Scenario | Pass means |
 |---|---|---|
-| O1 | Unattended install into an empty LXD VM (3 vCPU / 4 GiB / 30 GiB, UEFI), reboot into the disk | Hostname set, owner can SSH, MicroK8s came from the seed, first boot installed the bundled package, `/api/health` 200, Setup code present, ufw on with 80 and SSH, console on tty1 and no getty, no telemetry packages, no live-layer files on disk, healthy again after a reboot |
+| O1 | Unattended install into an empty LXD VM (3 vCPU / 4 GiB / 30 GiB, UEFI), reboot into the disk | Hostname set, owner can SSH, greetd runs the kiosk as `quotient-kiosk`, sleep masked, no desktop until asked, MicroK8s came from the seed, first boot installed the bundled package, `/api/health` 200, Setup code present, ufw on with 80 and SSH, console on tty1 and no getty, no telemetry packages, no live-layer files on disk, healthy again after a reboot |
 | O3 | O1 with `security.secureboot=true` | The same, and the firmware reports Secure Boot on |
+| O2 | The graphical installer in host QEMU (KVM, OVMF, virtio-vga, VNC on `127.0.0.1:5`), driven by keyboard with `vncdo`, a `vncsnapshot` screenshot of every page in the run's log directory | The install finishes through Calamares, the disk boots, the O1 checks pass over SSH on `127.0.0.1:2222`, then the screen: kiosk, Desktop sign-in refuses a wrong password, the right one installs the desktop on first use and starts it, the Mainframe stays healthy, log out returns to the kiosk |
 
-Only one harness VM runs at a time on ep-ai (shared rule with the quotient-server install harness).
+Only one harness VM runs at a time on ep-ai (shared rule with the quotient-server install harness). O2 uses the host's own QEMU because LXD's build has no VNC; it needs `qemu-system-x86 ovmf vncsnapshot sshpass` and `pipx install vncdotool` on the host.
+
+Pull requests run `lint.yml` (ShellCheck, YAML, package lists, unit files). Test ISOs are built on ep-ai; released ISOs by `release.yml`.
+
+## Release
+
+Run the **release** workflow (Actions → release → Run workflow) with the version (default: today's date) and the channel (default: stable). On a GitHub runner it builds the ISO (about 25 minutes), then `build/publish.sh`:
+
+1. writes `SHA256SUMS` and signs it with the Quotient APT key (`SHA256SUMS.gpg`, the key users already trust for packages);
+2. uploads the ISO and the checksum files to the website's Azure storage, container `mainframe-os`, under `<version>/`, and writes `latest.json` (version, URL, size, sha256) that the website's download page reads: `https://stquotientwebprod.blob.core.windows.net/mainframe-os/latest.json`. Only a stable build moves `latest.json`; other channels write `latest-<channel>.json`;
+3. creates the GitHub Release `v<version>` with the checksum files and the download URL (the ISO itself lives in Azure).
+
+Secrets: `GPG_PRIVATE_KEY` (the APT signing key, the same secret quotient-server CI holds), `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`. With `publish` off the workflow only builds and prints the checksum.
+
+Verify a download:
+
+```bash
+gpg --verify SHA256SUMS.gpg SHA256SUMS && sha256sum -c SHA256SUMS
+```
+
+The public ISO installs the **stable** channel, so promote quotient-server-tools before releasing an ISO that should carry a newer package; the installed Mainframe auto-updates from its channel either way.
 
 ## Layout
 
@@ -43,6 +88,8 @@ build/packages-base.txt     the installed system
 build/packages-live.txt     the live layer (never installed)
 build/rootfs/               overlay for the installed system (first boot, console, postinstall)
 build/live/                 overlay for the live layer (installer service, engine, Calamares config + branding)
-build/grub/                 ISO menu and the EFI stub
-harness/                    os-harness.sh (on the LXD host), run-remote.sh
+build/grub/                 ISO menu, its theme, and the EFI stub
+build/publish.sh            checksums, signature, Azure upload, latest.json, GitHub Release
+console/                    the tty1 status console (Go, built into the image)
+harness/                    os-harness.sh (on the LXD host), run-remote.sh, results/ (kept run logs)
 ```

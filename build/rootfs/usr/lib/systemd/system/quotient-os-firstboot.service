@@ -1,0 +1,14 @@
+[Unit]
+Description=Quotient Mainframe OS first boot: install the bundled Mainframe package
+ConditionPathExists=!/var/lib/quotient-os/.firstboot-done
+After=network-online.target snapd.seeded.service snapd.service
+Wants=network-online.target snapd.seeded.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/quotient-os/firstboot.sh
+TimeoutStartSec=30min
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

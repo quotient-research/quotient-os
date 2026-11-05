@@ -1,0 +1,34 @@
+# Quotient Mainframe OS installer branding (Calamares 3.3). Words per docs/design/BRAND.md.
+componentName: quotient
+welcomeStyleCalamares: false
+welcomeExpandingLogo: false
+windowExpanding: fullscreen
+windowSize: 1024px,720px
+windowPlacement: center
+sidebar: qml,top
+navigation: widget
+strings:
+  productName: Quotient Mainframe
+  shortProductName: Quotient
+  version: ""
+  shortVersion: ""
+  versionedName: Quotient Mainframe
+  shortVersionedName: Quotient Mainframe
+  bootloaderEntryName: ubuntu
+  productUrl: https://www.quotientsoft.com/
+  supportUrl: https://www.quotientsoft.com/
+  knownIssuesUrl: https://www.quotientsoft.com/
+  releaseNotesUrl: https://www.quotientsoft.com/
+images:
+  productLogo: quotient-mark-64.png
+  productIcon: quotient-mark-64.png
+  productWelcome: quotient-mark-160.png
+slideshow: show.qml
+slideshowAPI: 2
+style:
+  SidebarBackground: "#2FCF87"
+  SidebarText: "#14201A"
+  SidebarTextHighlight: "#14201A"
+  SidebarTextSelect: "#FFFFFF"
+uploadServer:
+  type: none

@@ -1,0 +1,24 @@
+[Unit]
+Description=Quotient Mainframe status console on tty1
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service plymouth-quit-wait.service getty-pre.target
+Before=getty.target
+
+[Service]
+ExecStart=/usr/lib/quotient-os/console
+Restart=always
+RestartSec=1
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+KillMode=process
+IgnoreSIGPIPE=no
+SendSIGHUP=yes
+UtmpIdentifier=tty1
+
+[Install]
+WantedBy=multi-user.target

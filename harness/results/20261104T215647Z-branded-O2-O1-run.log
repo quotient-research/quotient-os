@@ -1,0 +1,81 @@
+[1;34m[21:59:40] Remastering /home/ep/quotient-os/out/quotientos-2026.11.04-dev-amd64.iso with answers → /home/ep/quotient-os/harness/logs/20261104T215647Z/harness.iso[0m
+[1;34m[21:59:43] === O2 (graphical installer in host QEMU, VNC on :5)[0m
+[1;34m[21:59:50] Waiting for the welcome page[0m
+[1;34m[22:02:43] Installing through the GUI[0m
+[1;34m[22:05:13] SSH on the installed disk after 28s[0m
+[1;32mPASS O2 hostname lakehouse[0m
+[1;32mPASS O2 snap seed present[0m
+[1;34m[22:05:34] snapd seeded after 21s[0m
+[1;32mPASS O2 MicroK8s from the seed (rev 9072)[0m
+[1;34m[22:05:35] first boot package install after 0s[0m
+[1;32mPASS O2 quotient-server-tools installed[0m
+[1;34m[22:09:57] mainframe healthy (/api/health 200) after 261s[0m
+[1;32mPASS O2 healthy[0m
+[1;32mPASS O2 setup code present[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O2 ufw active[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O2 ufw allows 80[0m
+[1;32mPASS O2 status console on tty1[0m
+[1;32mPASS O2 no getty on tty1[0m
+[1;32mPASS O2 no telemetry packages[0m
+[1;32mPASS O2 NetworkManager, Avahi, SSH active[0m
+[1;32mPASS O2 install.conf preseeded[0m
+[1;32mPASS O2 no live-layer files on disk[0m
+[1;32mPASS O2 trimmed firmware absent[0m
+[1;34m[22:10:00] Reboot[0m
+[1;34m[22:10:21] SSH after reboot after 0s[0m
+[1;34m[22:12:14] healthy after reboot after 113s[0m
+[1;32mPASS O2 healthy after reboot[0m
+[1;34m[22:12:22] === O1 (secureboot=false) on qos-o1[0m
+[1;34m[22:12:28] Installing from the ISO (unattended)[0m
+[1;34m[22:13:28] install finished (VM powered off) after 0s[0m
+[1;34m[22:13:31] Booting the installed disk[0m
+[1;34m[22:13:31] DHCP lease for qos-o1 after 0s[0m
+[1;34m[22:13:31] VM address 10.154.3.86[0m
+[1;34m[22:13:45] SSH after 14s[0m
+[1;32mPASS O1 hostname lakehouse[0m
+[1;32mPASS O1 snap seed present[0m
+[1;34m[22:14:16] snapd seeded after 31s[0m
+[1;32mPASS O1 MicroK8s from the seed (rev 9072)[0m
+[1;34m[22:14:27] first boot package install after 10s[0m
+[1;32mPASS O1 quotient-server-tools installed[0m
+[1;34m[22:18:59] mainframe healthy (/api/health 200) after 271s[0m
+[1;32mPASS O1 healthy[0m
+[1;32mPASS O1 setup code present[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O1 ufw active[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O1 ufw allows 80[0m
+[1;32mPASS O1 status console on tty1[0m
+[1;32mPASS O1 no getty on tty1[0m
+[1;32mPASS O1 no telemetry packages[0m
+[1;32mPASS O1 NetworkManager, Avahi, SSH active[0m
+[1;32mPASS O1 install.conf preseeded[0m
+[1;32mPASS O1 no live-layer files on disk[0m
+[1;32mPASS O1 trimmed firmware absent[0m
+[1;34m[22:19:01] Reboot[0m
+[1;34m[22:19:34] SSH after reboot after 13s[0m
+[1;34m[22:21:07] healthy after reboot after 93s[0m
+[1;32mPASS O1 healthy after reboot[0m
+[1;34m[22:21:12] ALL PASS[0m

@@ -1,0 +1,23 @@
+[Unit]
+Description=Quotient Mainframe OS installer (Calamares in cage, or unattended)
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service plymouth-quit-wait.service NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/usr/lib/quotient-os/installer-launch.sh
+User=root
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=3
+UtmpIdentifier=tty1
+
+[Install]
+WantedBy=multi-user.target

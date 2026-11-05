@@ -1,0 +1,83 @@
+[1;34m[20:01:49] Remastering /home/ep/quotient-os/out/quotientos-2026.11.04-dev-amd64.iso with answers → /home/ep/quotient-os/harness/logs/20261104T2300Z/harness.iso[0m
+[1;34m[20:02:02] === O1 (secureboot=false) on qos-o1[0m
+[1;34m[20:02:06] Installing from the ISO (unattended)[0m
+[1;34m[20:03:07] install finished (VM powered off) after 1s[0m
+[1;34m[20:03:10] Booting the installed disk[0m
+[1;34m[20:03:11] DHCP lease for qos-o1 after 1s[0m
+[1;34m[20:03:11] VM address 10.154.3.61[0m
+[1;34m[20:03:24] SSH after 13s[0m
+[1;32mPASS O1 hostname lakehouse[0m
+[1;32mPASS O1 snap seed present[0m
+[1;34m[20:03:57] snapd seeded after 32s[0m
+[1;32mPASS O1 MicroK8s from the seed (rev 9072)[0m
+[1;34m[20:04:08] first boot package install after 10s[0m
+[1;32mPASS O1 quotient-server-tools installed[0m
+[1;34m[20:08:20] mainframe healthy (/api/health 200) after 251s[0m
+[1;32mPASS O1 healthy[0m
+[1;32mPASS O1 setup code present[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O1 ufw active[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O1 ufw allows 80[0m
+[1;32mPASS O1 status console on tty1[0m
+[1;32mPASS O1 no getty on tty1[0m
+[1;32mPASS O1 no telemetry packages[0m
+[1;32mPASS O1 NetworkManager, Avahi, SSH active[0m
+[1;32mPASS O1 install.conf preseeded[0m
+[1;32mPASS O1 no live-layer files on disk[0m
+[1;34m[20:08:21] Reboot[0m
+[1;34m[20:08:55] SSH after reboot after 13s[0m
+[1;34m[20:10:37] healthy after reboot after 102s[0m
+[1;32mPASS O1 healthy after reboot[0m
+[1;34m[20:10:42] === O3 (secureboot=true) on qos-o3[0m
+[1;34m[20:10:46] Installing from the ISO (unattended)[0m
+[1;34m[20:12:57] install finished (VM powered off) after 71s[0m
+[1;34m[20:13:01] Booting the installed disk[0m
+[1;34m[20:13:01] DHCP lease for qos-o3 after 0s[0m
+[1;34m[20:13:01] VM address 10.154.3.13[0m
+[1;34m[20:13:15] SSH after 14s[0m
+[1;32mPASS O3 hostname lakehouse[0m
+[1;32mPASS O3 booted with Secure Boot on[0m
+[1;32mPASS O3 snap seed present[0m
+[1;34m[20:13:47] snapd seeded after 31s[0m
+[1;32mPASS O3 MicroK8s from the seed (rev 9072)[0m
+[1;34m[20:13:58] first boot package install after 10s[0m
+[1;32mPASS O3 quotient-server-tools installed[0m
+[1;34m[20:18:20] mainframe healthy (/api/health 200) after 261s[0m
+[1;32mPASS O3 healthy[0m
+[1;32mPASS O3 setup code present[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O3 ufw active[0m
+WARN: uid is 0 but '/etc' is owned by 1000
+WARN: /etc is group writable!
+WARN: uid is 0 but '/lib' is owned by 1000
+WARN: /lib is group writable!
+WARN: uid is 0 but '/usr' is owned by 1000
+WARN: /usr is group writable!
+[1;32mPASS O3 ufw allows 80[0m
+[1;32mPASS O3 status console on tty1[0m
+[1;32mPASS O3 no getty on tty1[0m
+[1;32mPASS O3 no telemetry packages[0m
+[1;32mPASS O3 NetworkManager, Avahi, SSH active[0m
+[1;32mPASS O3 install.conf preseeded[0m
+[1;32mPASS O3 no live-layer files on disk[0m
+[1;34m[20:18:22] Reboot[0m
+[1;34m[20:18:55] SSH after reboot after 13s[0m
+[1;34m[20:20:38] healthy after reboot after 103s[0m
+[1;32mPASS O3 healthy after reboot[0m
+[1;34m[20:20:43] ALL PASS[0m

@@ -1,0 +1,19 @@
+#!/bin/sh
+# greetd's greeter: the screen kiosk in cage (-s keeps Ctrl+Alt+Fn working).
+# The kiosk leaves a mark when it has handed greetd a session to start; any
+# other exit is a crash and the kiosk starts again. Three fast crashes in a row
+# mean the graphics can't come up here: show the text status instead.
+MARK="${XDG_RUNTIME_DIR:-/tmp}/quotient-kiosk-session-started"
+fails=0
+while :; do
+  rm -f "$MARK"
+  start=$(date +%s)
+  cage -s -- /usr/lib/quotient-os/kiosk
+  [ -e "$MARK" ] && exit 0
+  if [ $(( $(date +%s) - start )) -lt 30 ]; then fails=$((fails + 1)); else fails=0; fi
+  if [ "$fails" -ge 3 ]; then
+    echo "quotient-kiosk: the screen did not start; showing the text status" >&2
+    exec /usr/lib/quotient-os/console --no-login
+  fi
+  sleep 2
+done

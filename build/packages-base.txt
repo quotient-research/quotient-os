@@ -1,0 +1,76 @@
+# What the installed Mainframe has. One line per package; # comments.
+# Boot
+linux-image-generic
+linux-firmware
+initramfs-tools
+grub-efi-amd64
+grub-efi-amd64-signed
+shim-signed
+grub-pc-bin
+efibootmgr
+plymouth
+plymouth-label
+# System
+systemd
+systemd-sysv
+systemd-resolved
+systemd-timesyncd
+udev
+dbus
+kmod
+sudo
+locales
+tzdata
+console-setup
+keyboard-configuration
+kbd
+lsb-release
+bash-completion
+less
+nano
+vim-tiny
+htop
+# Network
+network-manager
+avahi-daemon
+libnss-mdns
+openssh-server
+ufw
+iproute2
+iputils-ping
+curl
+wget
+ca-certificates
+# quotient-server-tools depends on these
+jq
+psmisc
+openssl
+snapd
+gnupg
+# Storage and hardware
+e2fsprogs
+dosfstools
+gdisk
+parted
+smartmontools
+pciutils
+usbutils
+zstd
+# Updates
+unattended-upgrades
+apt-utils
+# Status console
+qrencode
+# The screen: the web app in a kiosk (greetd + cage + a WebKitGTK view). The
+# desktop itself is installed on first use (usr/share/quotient-os/desktop-packages.txt).
+greetd
+cage
+python3
+python3-gi
+gir1.2-gtk-4.0
+gir1.2-webkit-6.0
+fonts-ibm-plex
+dbus-user-session
+polkitd
+apparmor
+xkb-data
