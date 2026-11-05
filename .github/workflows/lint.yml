@@ -15,9 +15,11 @@ jobs:
       - name: ShellCheck and bash -n
         run: |
           sudo apt-get install -y -qq shellcheck >/dev/null
-          files=$(git ls-files 'build/*.sh' 'harness/*.sh' 'build/rootfs/usr/lib/quotient-os/*' 'build/live/usr/lib/quotient-os/*')
+          files=$(git ls-files 'build/*.sh' 'harness/*.sh' 'build/rootfs/usr/lib/quotient-os/*' 'build/live/usr/lib/quotient-os/*' | grep -v '/kiosk$')
           for f in $files; do bash -n "$f"; done
           shellcheck -S warning -e SC1091,SC2016,SC2029,SC2154,SC2046,SC2024 $files
+      - name: Kiosk (Python)
+        run: python3 -m py_compile build/rootfs/usr/lib/quotient-os/kiosk
       - name: Calamares and harness YAML
         run: |
           python3 - <<'EOF'
@@ -32,7 +34,7 @@ jobs:
           EOF
       - name: Package lists
         run: |
-          for f in build/packages-base.txt build/packages-live.txt; do
+          for f in build/packages-base.txt build/packages-live.txt build/rootfs/usr/share/quotient-os/desktop-packages.txt; do
             grep -vE '^(#|$)' "$f" | sed 's/ *#.*//' | grep -vE '^[a-z0-9][a-z0-9.+-]+$' && { echo "bad line in $f"; exit 1; } || true
           done
       - name: systemd units

@@ -10,7 +10,9 @@
 #   O3  the same with Secure Boot on
 #   O2  the graphical installer driven by keyboard over VNC in host QEMU
 #       (LXD's QEMU has no VNC); a screenshot of every page, then the same
-#       checks on the installed disk
+#       checks on the installed disk, then the screen: the kiosk, Desktop
+#       (Ctrl+Alt+D), a wrong and the right password, the first-use desktop
+#       install, the desktop, log out, the kiosk again
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 CMD=${1:-}; shift || true
@@ -121,6 +123,15 @@ checks() { # checks ID SECUREBOOT(true|false)
   ssh_vm 'test -f /etc/quotient/install.conf && grep -q "^http_port=80" /etc/quotient/install.conf' && pass "$id install.conf preseeded" || fail "$id install.conf missing"
   ssh_vm 'test ! -e /usr/bin/calamares && test ! -e /usr/lib/quotient-os/quotient-os-install.sh' && pass "$id no live-layer files on disk" || fail "$id live files leaked into the install"
   ssh_vm 'test ! -d /usr/lib/firmware/qcom && test ! -d /usr/lib/firmware/nvidia' && pass "$id trimmed firmware absent" || fail "$id trimmed firmware present"
+  # The screen: greetd runs the kiosk on VT 7; the status console stays on VT 1.
+  [ "$(ssh_vm 'systemctl is-active greetd' || true)" = active ] && pass "$id greetd active" || fail "$id greetd not active"
+  wait_for 180 "kiosk running" ssh_vm 'pgrep -u quotient-kiosk -f /usr/lib/quotient-os/kiosk' \
+    && pass "$id kiosk running as quotient-kiosk" || { fail "$id kiosk not running"; sudo_vm "journalctl -u greetd -b --no-pager | tail -40" > "$LOGS/$id-greetd.log" 2>&1 || true; }
+  ssh_vm 'pgrep -u quotient-kiosk -f "console --no-login"' >/dev/null && fail "$id kiosk fell back to the text console" || true
+  [ "$(ssh_vm 'id -u quotient-kiosk' || true)" = 59000 ] && pass "$id kiosk uid 59000 (not a container uid)" || fail "$id kiosk uid is $(ssh_vm 'id -u quotient-kiosk')"
+  [ "$(ssh_vm 'systemctl is-enabled sleep.target' || true)" = masked ] && pass "$id sleep masked" || fail "$id sleep.target not masked"
+  sudo_vm "stat -c '%a %G' /run/quotient-os/screen.json" | grep -q '^640 quotient-kiosk$' && pass "$id screen.json private to the kiosk" || fail "$id screen.json missing or readable by all"
+  ssh_vm 'test ! -e /var/lib/quotient-os/desktop-installed && ! dpkg -s lxqt-session >/dev/null 2>&1' && pass "$id no desktop until asked" || fail "$id desktop present before first use"
 
   log "Reboot"
   sudo_vm "systemctl reboot" >/dev/null 2>&1 || true
@@ -248,7 +259,44 @@ scenario_gui() {
   SSH_TARGET="$USER_@127.0.0.1"; SSH_PORT=2222; SSH_AUTH=(sshpass -p "$PASS")
   wait_for 600 "SSH on the installed disk" ssh_vm true || { fail "O2 no SSH after the GUI install"; shot 9-after; dump_calamares_log; [ "$KEEP" = 1 ] || qemu_stop; return; }
   checks O2 false
+  kiosk_flow
   [ "$KEEP" = 1 ] || qemu_stop
+}
+
+# The screen after install: the kiosk, the Desktop sign-in, the first-use
+# desktop install, the desktop, log out, the kiosk again. Screenshots 10-16.
+kiosk_flow() {
+  log "Screen: kiosk"
+  wait_for 180 "kiosk running" ssh_vm 'pgrep -u quotient-kiosk -f /usr/lib/quotient-os/kiosk' || { fail "O2 no kiosk"; return; }
+  sleep 30; shot 10-kiosk
+  vnc_key ctrl-alt-d; sleep 3; shot 11-signin
+  vnc_type "not-the-password"; vnc_key enter; sleep 6; shot 12-signin-wrong
+  ssh_vm "pgrep -u $USER_ -f '[d]esktop-session'" >/dev/null && fail "O2 a wrong password started a session" || pass "O2 wrong password refused"
+  vnc_type "$PASS"; vnc_key enter; sleep 15; shot 13-desktop-installing
+  if wait_for 1500 "desktop installed" ssh_vm 'test -e /var/lib/quotient-os/desktop-installed'; then
+    pass "O2 desktop installed on first use"
+  else
+    fail "O2 desktop did not install"; sudo_vm "cat /var/log/quotient-desktop-install.log" > "$LOGS/O2-desktop-install.log" 2>&1 || true
+    sudo_vm "systemctl status --no-pager quotient-desktop-install; ps -ef --forest" > "$LOGS/O2-desktop-install-ps.log" 2>&1 || true
+    shot 14-desktop-failed; return
+  fi
+  sudo_vm "cat /var/log/quotient-desktop-install.log" > "$LOGS/O2-desktop-install.log" 2>&1 || true
+  sleep 45; shot 14-desktop
+  desktop_up() { ssh_vm "pgrep -u $USER_ -x labwc && pgrep -u $USER_ -x lxqt-panel"; }
+  wait_for 120 "desktop session (labwc + lxqt-panel)" desktop_up \
+    && pass "O2 desktop session running" || fail "O2 no desktop session"
+  # The panel's menu button is an SVG: without Qt's SVG plugin it is blank.
+  ssh_vm 'test -e /usr/lib/x86_64-linux-gnu/qt6/plugins/imageformats/libqsvg.so && grep -E "^plugins=" ~/.config/lxqt/panel.conf | grep fancymenu | grep -q quicklaunch' \
+    && pass "O2 panel has its menu and launchers" || fail "O2 panel without menu or launchers"
+  # Kept on: the Mainframe stays healthy with the desktop up.
+  ssh_vm 'curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health' | grep -q 200 && pass "O2 healthy with the desktop up" || fail "O2 unhealthy with the desktop up"
+  { ssh_vm 'free -m'; ssh_vm 'snap list firefox 2>&1 || echo "firefox: still installing"'; } > "$LOGS/O2-free-desktop.txt" 2>&1 || true
+  # Log out: end the owner's graphical session (not the SSH one we're using).
+  local sid
+  sid=$(ssh_vm "for s in \$(loginctl list-sessions --no-legend | awk '{print \$1}'); do [ \"\$(loginctl show-session \$s -p Name --value)\" = $USER_ ] && [ \"\$(loginctl show-session \$s -p TTY --value)\" = tty7 ] && echo \$s; done" | head -1) || true
+  [ -n "$sid" ] && sudo_vm "loginctl terminate-session $sid" >/dev/null 2>&1 || true
+  sleep 25; shot 15-kiosk-again
+  ssh_vm 'pgrep -u quotient-kiosk -f /usr/lib/quotient-os/kiosk' >/dev/null && pass "O2 kiosk back after log out" || fail "O2 kiosk not back after log out"
 }
 
 for s in $(echo "$SCENARIOS" | tr ',' ' '); do

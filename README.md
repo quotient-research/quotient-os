@@ -8,7 +8,26 @@ Plan and decisions: `docs/plans/2026-11-04-quotient-os.md` in the ecosystem repo
 
 - **Base:** Ubuntu 26.04 LTS, minimal, built with `debootstrap`. Ubuntu's signed shim, GRUB and kernel, so Secure Boot works unchanged.
 - **Installer:** Calamares, full screen in `cage`. The Quotient-specific work (`build/rootfs/usr/lib/quotient-os/postinstall.sh`) is one script shared with the unattended install the harness uses.
-- **Installed system:** headless. NetworkManager, Avahi, SSH (owner account), ufw on, the MicroK8s snap seeded, `quotient-server-tools` bundled and installed on first boot with `/etc/quotient/install.conf` already written. A status console on tty1 shows the name, address, health and the setup link as a QR code.
+- **Installed system:** an appliance. NetworkManager, Avahi, SSH (owner account), ufw on, the MicroK8s snap seeded, `quotient-server-tools` bundled and installed on first boot with `/etc/quotient/install.conf` already written. Sleep is off for good (masked targets, logind ignores idle, lid and keys).
+- **The screen:** a kiosk showing the Mainframe web app (see below). A text status console on tty1 (Ctrl+Alt+F1) shows the name, address, health and the setup link as a QR code, with a login.
+
+## The screen
+
+```
+boot ─▶ greetd (VT 7) ─▶ kiosk-session ─▶ cage ─▶ kiosk (WebKitGTK, user quotient-kiosk)
+                                                  │  waiting page until /api/health is 200
+                                                  │  then the setup link (unclaimed) or http://localhost/
+                                                  └─ Desktop button / Ctrl+Alt+D ─▶ owner password (greetd PAM)
+                                                         └─▶ desktop-session (as the owner)
+                                                               first time: install screen ─▶ quotient-desktop-install.service
+                                                               then: LXQt on labwc ─ log out ─▶ greetd ─▶ kiosk
+```
+
+- **Account:** `quotient-kiosk`, uid 59000. Not 999: the Mainframe's pods run as 999 (Postgres, Calico), and a host account with that uid would own their files.
+- **Kiosk** (`usr/lib/quotient-os/kiosk`, Python + GTK 4 + WebKitGTK): only `localhost` is reachable (the setup link is opened on `localhost`, not the `.local` name), no context menu, developer tools or new windows. Web storage persists in `/var/lib/quotient-kiosk`: a Quotient ID made on the screen ("I'm new to Quotient") lives there, so the screen stays signed in like any home browser. It reads `/run/quotient-os/screen.json`, which the root status console writes (0640, group `quotient-kiosk`: it carries the setup code).
+- **Desktop on first use:** the packages in `usr/share/quotient-os/desktop-packages.txt` (LXQt, labwc, a terminal, an editor; Firefox from the Snap Store, optional) install from the archive the first time the owner asks (about 70 MB to download, 250 MB on disk); Firefox follows from the Snap Store in the background and never holds up the desktop. A polkit rule lets a local, active member of `sudo` start only that unit. Signing in to the desktop needs the owner's password; the kiosk account has none and no SSH. `desktop-session` gives the owner a first panel (the menu, Back to the Mainframe, Files, Terminal, Firefox; no volume applet, since a Mainframe has no sound server) and keeps any later change. Keep `qt6-svg-plugins` in the list: the theme's menu button is an SVG and is blank without it.
+- **If the graphics can't start** (three fast crashes), `kiosk-session` shows the text status on VT 7 instead.
+- **AppArmor:** Ubuntu restricts unprivileged user namespaces; `etc/apparmor.d/quotient-kiosk` grants one to the kiosk for WebKit's bubblewrap sandbox, as Ubuntu does for GNOME Web.
 
 ## Build
 
@@ -35,9 +54,9 @@ sudo ./build/build-iso.sh --channel dev           # what we test
 
 | | Scenario | Pass means |
 |---|---|---|
-| O1 | Unattended install into an empty LXD VM (3 vCPU / 4 GiB / 30 GiB, UEFI), reboot into the disk | Hostname set, owner can SSH, MicroK8s came from the seed, first boot installed the bundled package, `/api/health` 200, Setup code present, ufw on with 80 and SSH, console on tty1 and no getty, no telemetry packages, no live-layer files on disk, healthy again after a reboot |
+| O1 | Unattended install into an empty LXD VM (3 vCPU / 4 GiB / 30 GiB, UEFI), reboot into the disk | Hostname set, owner can SSH, greetd runs the kiosk as `quotient-kiosk`, sleep masked, no desktop until asked, MicroK8s came from the seed, first boot installed the bundled package, `/api/health` 200, Setup code present, ufw on with 80 and SSH, console on tty1 and no getty, no telemetry packages, no live-layer files on disk, healthy again after a reboot |
 | O3 | O1 with `security.secureboot=true` | The same, and the firmware reports Secure Boot on |
-| O2 | The graphical installer in host QEMU (KVM, OVMF, virtio-vga, VNC on `127.0.0.1:5`), driven by keyboard with `vncdo`, a `vncsnapshot` screenshot of every page in the run's log directory | The install finishes through Calamares, the disk boots, and the O1 checks pass over SSH on `127.0.0.1:2222` |
+| O2 | The graphical installer in host QEMU (KVM, OVMF, virtio-vga, VNC on `127.0.0.1:5`), driven by keyboard with `vncdo`, a `vncsnapshot` screenshot of every page in the run's log directory | The install finishes through Calamares, the disk boots, the O1 checks pass over SSH on `127.0.0.1:2222`, then the screen: kiosk, Desktop sign-in refuses a wrong password, the right one installs the desktop on first use and starts it, the Mainframe stays healthy, log out returns to the kiosk |
 
 Only one harness VM runs at a time on ep-ai (shared rule with the quotient-server install harness). O2 uses the host's own QEMU because LXD's build has no VNC; it needs `qemu-system-x86 ovmf vncsnapshot sshpass` and `pipx install vncdotool` on the host.
 
