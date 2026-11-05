@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Back to the Mainframe
+Comment=Log out of the desktop and show the Mainframe screen again
+Exec=lxqt-leave --logout
+Icon=/usr/share/quotient-os/quotient-mark-56.png
+Categories=System;
+OnlyShowIn=LXQt;

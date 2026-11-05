@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Install the desktop the first time the owner asks for it (the kiosk's Desktop
+# button). Runs as quotient-desktop-install.service; the kiosk's install screen
+# follows /run/quotient-os/desktop-install.json.
+set -uo pipefail
+STATE=/run/quotient-os/desktop-install.json
+LIST=/usr/share/quotient-os/desktop-packages.txt
+MARK=/var/lib/quotient-os/desktop-installed
+LOG=/var/log/quotient-desktop-install.log
+exec >>"$LOG" 2>&1
+echo "=== $(date -u +%FT%TZ) desktop install"
+
+state() { # state running|done|failed PERCENT MESSAGE
+  mkdir -p "$(dirname "$STATE")"
+  printf '{"state":"%s","percent":%s,"message":"%s"}\n' "$1" "$2" "$3" > "$STATE.tmp"
+  chmod 644 "$STATE.tmp"; mv "$STATE.tmp" "$STATE"
+}
+
+if [ -e "$MARK" ]; then state "done" 100 "The desktop is installed."; exit 0; fi
+state running 1 "Checking for updates"
+export DEBIAN_FRONTEND=noninteractive
+APT=(-o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+if ! apt-get "${APT[@]}" update -qq; then
+  state failed 0 "Couldn't reach the Ubuntu archive. Check the network cable and try again."
+  exit 1
+fi
+mapfile -t PKGS < <(grep -vE '^(#|$)' "$LIST" | sed 's/ *#.*//')
+
+# apt reports progress on a status descriptor: downloads fill 0-45%, unpacking
+# and setting up fill 45-95%. It goes to a file that this loop polls, never a
+# pipe: a daemon a postinst starts would inherit the pipe and hold it open.
+state running 2 "Downloading the desktop"
+STATUS=$(mktemp)
+apt-get "${APT[@]}" install -y --no-install-recommends -o APT::Status-Fd=3 "${PKGS[@]}" \
+  3>"$STATUS" >>"$LOG" 2>&1 </dev/null &
+APT_PID=$!
+while kill -0 "$APT_PID" 2>/dev/null; do
+  IFS=: read -r kind _ pct msg < <(grep -E '^(dl|pm)status:' "$STATUS" | tail -n 1) || true
+  pct=${pct%%.*}
+  if [[ "${pct:-}" =~ ^[0-9]+$ ]]; then
+    case "$kind" in
+      dlstatus) state running $(( 2 + pct * 43 / 100 )) "Downloading the desktop" ;;
+      pmstatus) state running $(( 45 + pct * 50 / 100 )) "Installing: ${msg//\"/}" ;;
+    esac
+  fi
+  sleep 1
+done
+wait "$APT_PID"; RC=$?
+rm -f "$STATUS"
+if [ "$RC" != 0 ]; then
+  state failed 0 "The packages didn't install (details in $LOG)."
+  exit 1
+fi
+
+date -Iseconds > "$MARK"
+state "done" 100 "The desktop is installed."
+echo "=== desktop done"
+
+# Firefox comes from the Snap Store on Ubuntu (several hundred MB with its
+# runtimes). The desktop doesn't wait for it: it appears in the menu when done.
+if ! snap list firefox >/dev/null 2>&1; then
+  timeout 3600 snap install firefox </dev/null || echo "firefox snap did not install; the desktop works without it"
+fi
+echo "=== done"

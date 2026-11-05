@@ -1,0 +1,66 @@
+#!/bin/sh
+# The owner's desktop, started by the kiosk through greetd. The first time it
+# installs the desktop (the kiosk's install screen, in cage); then LXQt on the
+# labwc compositor. Logging out ends this session and greetd shows the kiosk.
+if [ ! -e /var/lib/quotient-os/desktop-installed ]; then
+  cage -s -- /usr/lib/quotient-os/kiosk --install-desktop
+  [ -e /var/lib/quotient-os/desktop-installed ] || exit 0
+fi
+# Without a compositor in its settings LXQt opens a first-run picker; choose labwc.
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/lxqt/session.conf"
+if ! grep -q '^compositor=' "$conf" 2>/dev/null; then
+  mkdir -p "$(dirname "$conf")"
+  if grep -q '^\[General\]' "$conf" 2>/dev/null; then
+    sed -i '/^\[General\]/a compositor=labwc' "$conf"
+  else
+    printf '[General]\ncompositor=labwc\n' >> "$conf"
+  fi
+fi
+# A first panel for the owner: the menu, Files, Terminal, Firefox and "Back to
+# the Mainframe" (log out). No volume applet (a Mainframe has no sound server)
+# and no tray (X11 only). Later changes in the panel's settings are kept.
+panel="$(dirname "$conf")/panel.conf"
+if [ ! -e "$panel" ]; then
+  cat > "$panel" <<'PANEL'
+[General]
+panels=panel1
+
+[panel1]
+plugins=fancymenu,quicklaunch,taskbar,statusnotifier,mount,worldclock,showdesktop
+position=Bottom
+desktop=0
+
+[fancymenu]
+type=fancymenu
+alignment=Left
+
+[quicklaunch]
+type=quicklaunch
+alignment=Left
+apps\1\desktop=/usr/share/applications/quotient-mainframe.desktop
+apps\2\desktop=/usr/share/applications/pcmanfm-qt.desktop
+apps\3\desktop=/usr/share/applications/qterminal.desktop
+apps\4\desktop=/var/lib/snapd/desktop/applications/firefox_firefox.desktop
+apps\size=4
+
+[taskbar]
+type=taskbar
+
+[statusnotifier]
+type=statusnotifier
+alignment=Right
+
+[mount]
+type=mount
+alignment=Right
+
+[worldclock]
+type=worldclock
+alignment=Right
+
+[showdesktop]
+type=showdesktop
+alignment=Right
+PANEL
+fi
+exec startlxqtwayland

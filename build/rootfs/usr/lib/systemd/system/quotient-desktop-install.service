@@ -1,0 +1,9 @@
+[Unit]
+Description=Install the Quotient Mainframe desktop (first use)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/quotient-os/desktop-install
+Nice=10

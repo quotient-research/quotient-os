@@ -1,0 +1,15 @@
+# The desktop the kiosk installs the first time the owner asks for it:
+# LXQt on the labwc Wayland compositor. One package per line; # comments.
+lxqt-core
+lxqt-wayland-session
+labwc
+layer-shell-qt        # the panel and the desktop icons are layer-shell surfaces
+qt6-wayland           # Qt's Wayland shell plugins (windows don't map without them)
+qt6-svg-plugins       # SVG icons (the theme's menu button is an SVG; without it the button is blank)
+lxqt-menu-data        # the panel's application menu
+lxqt-themes
+breeze-icon-theme
+qterminal
+featherpad
+xwayland
+xdg-desktop-portal-lxqt
