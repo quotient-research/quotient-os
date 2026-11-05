@@ -33,7 +33,7 @@ jobs:
       - name: Package lists
         run: |
           for f in build/packages-base.txt build/packages-live.txt; do
-            grep -vE '^(#|$)' "$f" | grep -vE '^[a-z0-9][a-z0-9.+-]+$' && { echo "bad line in $f"; exit 1; } || true
+            grep -vE '^(#|$)' "$f" | sed 's/ *#.*//' | grep -vE '^[a-z0-9][a-z0-9.+-]+$' && { echo "bad line in $f"; exit 1; } || true
           done
       - name: systemd units
         run: |
